@@ -1,2 +1,0 @@
-# sotrudnik-control
-Сотрудник-Контроль

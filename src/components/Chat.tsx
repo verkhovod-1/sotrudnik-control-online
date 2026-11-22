@@ -1,122 +1,374 @@
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import type { ChangeEvent, FormEvent } from 'react';
 import { User } from '../types';
-import {
-  getState,
-  getConversation,
-  sendMessage,
-  markMessagesAsRead,
-  formatMSKDateTime,
-} from '../store';
+import { supabase } from '../lib/supabase';
 import SearchBar from './SearchBar';
-import FileActions from './FileActions';
-import { readFileAsDataURL, formatFileSize, getFileIcon, isAllowedFile } from '../utils/files';
+import {
+  formatFileSize,
+  getFileIcon,
+  isAllowedFile,
+} from '../utils/files';
+import { formatMSKDateTime } from '../store';
 
 interface ChatProps {
   user: User;
 }
 
+interface Contact {
+  id: string;
+  full_name: string;
+  email: string;
+  role: 'director' | 'admin' | 'employee';
+}
+
+interface ChatAttachment {
+  name: string;
+  size: number;
+  type: string;
+  file_path: string;
+}
+
+interface ChatMessage {
+  id: string;
+  sender_id: string;
+  receiver_id: string;
+  text: string;
+  timestamp: string;
+  read: boolean;
+  attachment: ChatAttachment | null;
+}
+
+const MAX_FILE_SIZE = 25 * 1024 * 1024;
+
 export default function Chat({ user }: ChatProps) {
+  const [contacts, setContacts] = useState<Contact[]>([]);
   const [selectedUser, setSelectedUser] = useState<string | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [messageText, setMessageText] = useState('');
-  const [messages, setMessages] = useState<ReturnType<typeof getConversation>>([]);
   const [contactSearch, setContactSearch] = useState('');
   const [messageSearch, setMessageSearch] = useState('');
-  const [attachment, setAttachment] = useState<{name: string; size: number; type: string; dataUrl: string} | null>(null);
+  const [attachment, setAttachment] = useState<File | null>(null);
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+  const [loading, setLoading] = useState(false);
+  const [sending, setSending] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const state = getState();
-  const otherUsers = state.users.filter((u) => u.id !== user.id);
+  const selectedContact = contacts.find(
+    (contact) => contact.id === selectedUser
+  );
 
-  const filteredUsers = contactSearch.trim()
-    ? otherUsers.filter((u) => {
-        const query = contactSearch.toLowerCase();
-        return u.name.toLowerCase().includes(query) || u.email.toLowerCase().includes(query);
-      })
-    : otherUsers;
+  const filteredContacts = contacts.filter((contact) => {
+    const query = contactSearch.trim().toLowerCase();
 
-  const filteredMessages = messageSearch.trim()
-    ? messages.filter((m) => {
-        const query = messageSearch.toLowerCase();
-        const matchesText = m.text.toLowerCase().includes(query);
-        const matchesAttachment = m.attachment?.name.toLowerCase().includes(query);
-        return matchesText || matchesAttachment;
-      })
-    : messages;
+    if (!query) return true;
 
-  useEffect(() => {
-    if (selectedUser) {
-      setMessages(getConversation(user.id, selectedUser));
-      markMessagesAsRead(user.id, selectedUser);
-    }
-  }, [selectedUser, user.id]);
+    return (
+      contact.full_name.toLowerCase().includes(query) ||
+      contact.email.toLowerCase().includes(query)
+    );
+  });
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  const filteredMessages = messages.filter((message) => {
+    const query = messageSearch.trim().toLowerCase();
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (selectedUser) {
-        setMessages(getConversation(user.id, selectedUser));
-      }
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [selectedUser, user.id]);
+    if (!query) return true;
 
-  const handleFileAttach = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || !e.target.files[0]) return;
-    const file = e.target.files[0];
-    
-    if (!isAllowedFile(file.name)) {
-      alert('Формат файла не поддерживается');
+    return (
+      message.text.toLowerCase().includes(query) ||
+      message.attachment?.name.toLowerCase().includes(query)
+    );
+  });
+
+  // Загрузка списка сотрудников
+  const loadContacts = useCallback(async () => {
+    const { data, error } = await supabase.rpc('get_chat_contacts');
+
+    if (error) {
+      console.error('Ошибка загрузки сотрудников:', error);
+      alert('Не удалось загрузить список сотрудников');
       return;
     }
-    
-    try {
-      const dataUrl = await readFileAsDataURL(file);
-      setAttachment({
-        name: file.name,
-        size: file.size,
-        type: file.type,
-        dataUrl,
-      });
-    } catch (error) {
-      console.error('Ошибка чтения файла:', error);
-      alert('Ошибка при чтении файла');
+
+    setContacts((data || []) as Contact[]);
+  }, []);
+
+  // Загрузка непрочитанных сообщений
+  const loadUnreadCounts = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('chat_messages')
+      .select('sender_id')
+      .eq('receiver_id', user.id)
+      .eq('read', false);
+
+    if (error) {
+      console.error('Ошибка загрузки непрочитанных сообщений:', error);
+      return;
     }
-    
+
+    const counts: Record<string, number> = {};
+
+    (data || []).forEach((message) => {
+      counts[message.sender_id] =
+        (counts[message.sender_id] || 0) + 1;
+    });
+
+    setUnreadCounts(counts);
+  }, [user.id]);
+
+  // Загрузка переписки
+  const loadMessages = useCallback(async () => {
+    if (!selectedUser) return;
+
+    const { data, error } = await supabase
+      .from('chat_messages')
+      .select('*')
+      .or(
+        `and(sender_id.eq.${user.id},receiver_id.eq.${selectedUser}),and(sender_id.eq.${selectedUser},receiver_id.eq.${user.id})`
+      )
+      .order('timestamp', { ascending: true });
+
+    if (error) {
+      console.error('Ошибка загрузки сообщений:', error);
+      return;
+    }
+
+    setMessages((data || []) as ChatMessage[]);
+  }, [selectedUser, user.id]);
+
+  // Отметка входящих сообщений как прочитанных
+  const markAsRead = useCallback(async () => {
+    if (!selectedUser) return;
+
+    const { error } = await supabase
+      .from('chat_messages')
+      .update({ read: true })
+      .eq('sender_id', selectedUser)
+      .eq('receiver_id', user.id)
+      .eq('read', false);
+
+    if (error) {
+      console.error('Ошибка отметки прочтения:', error);
+      return;
+    }
+
+    await loadUnreadCounts();
+  }, [selectedUser, user.id, loadUnreadCounts]);
+
+  // Первоначальная загрузка
+  useEffect(() => {
+    loadContacts();
+    loadUnreadCounts();
+  }, [loadContacts, loadUnreadCounts]);
+
+  // Загрузка переписки и отметка прочтения
+  useEffect(() => {
+    if (!selectedUser) {
+      setMessages([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    const refresh = async () => {
+      await loadMessages();
+
+      if (!cancelled) {
+        await markAsRead();
+      }
+    };
+
+    refresh();
+
+    const interval = window.setInterval(() => {
+      if (!cancelled) {
+        loadMessages();
+        loadUnreadCounts();
+      }
+    }, 3000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [
+    selectedUser,
+    loadMessages,
+    markAsRead,
+    loadUnreadCounts,
+  ]);
+
+  // Автоматическая прокрутка вниз
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({
+      behavior: 'smooth',
+    });
+  }, [messages]);
+
+  // Выбор файла
+  const handleFileAttach = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+
+    if (!file) return;
+
+    if (!isAllowedFile(file.name)) {
+      alert('Формат файла не поддерживается');
+      e.target.value = '';
+      return;
+    }
+
+    if (file.size > MAX_FILE_SIZE) {
+      alert('Максимальный размер файла — 25 МБ');
+      e.target.value = '';
+      return;
+    }
+
+    setAttachment(file);
     e.target.value = '';
   };
 
-  const handleSend = (e: React.FormEvent) => {
+  // Отправка сообщения
+  const handleSend = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if ((!messageText.trim() && !attachment) || !selectedUser) return;
-    sendMessage({
-      senderId: user.id,
-      receiverId: selectedUser,
-      text: messageText.trim(),
-      attachment: attachment || undefined,
-    });
-    setMessageText('');
-    setAttachment(null);
-    setMessages(getConversation(user.id, selectedUser));
+
+    if ((!messageText.trim() && !attachment) || !selectedUser) {
+      return;
+    }
+
+    if (sending) return;
+
+    setSending(true);
+
+    let uploadedPath: string | null = null;
+
+    try {
+      let attachmentData: ChatAttachment | null = null;
+
+      // Если есть вложение, сначала загружаем его в Storage
+      if (attachment) {
+        const safeName = attachment.name
+          .replace(/[\/\\]/g, '_')
+          .replace(/[\r\n]/g, '_');
+
+        const filePath =
+          `${user.id}/${crypto.randomUUID()}-${safeName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('synchron-chat')
+          .upload(filePath, attachment, {
+            cacheControl: '3600',
+            upsert: false,
+            contentType: attachment.type || 'application/octet-stream',
+          });
+
+        if (uploadError) {
+          throw uploadError;
+        }
+
+        uploadedPath = filePath;
+
+        attachmentData = {
+          name: attachment.name,
+          size: attachment.size,
+          type: attachment.type,
+          file_path: filePath,
+        };
+      }
+
+      // Сохраняем сообщение в базе
+      const { error: insertError } = await supabase
+        .from('chat_messages')
+        .insert({
+          sender_id: user.id,
+          receiver_id: selectedUser,
+          text: messageText.trim(),
+          read: false,
+          attachment: attachmentData,
+        });
+
+      if (insertError) {
+        throw insertError;
+      }
+
+      setMessageText('');
+      setAttachment(null);
+
+      await loadMessages();
+      await loadUnreadCounts();
+    } catch (error) {
+      console.error('Ошибка отправки сообщения:', error);
+
+      // Если файл загрузился, а сообщение не сохранилось,
+      // удаляем оставшийся файл
+      if (uploadedPath) {
+        const { error: removeError } = await supabase.storage
+          .from('synchron-chat')
+          .remove([uploadedPath]);
+
+        if (removeError) {
+          console.error('Не удалось удалить файл:', removeError);
+        }
+      }
+
+      alert('Не удалось отправить сообщение. Попробуйте ещё раз.');
+    } finally {
+      setSending(false);
+    }
   };
 
-  const getUnreadForUser = (userId: string) => {
-    return state.messages.filter(
-      (m) => m.senderId === userId && m.receiverId === user.id && !m.read
-    ).length;
+  // Скачивание вложения
+  const handleDownload = async (file: ChatAttachment) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from('synchron-chat')
+        .createSignedUrl(file.file_path, 60);
+
+      if (error || !data?.signedUrl) {
+        throw error || new Error('Не удалось получить ссылку');
+      }
+
+      const link = document.createElement('a');
+      link.href = data.signedUrl;
+      link.download = file.name;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      console.error('Ошибка скачивания файла:', error);
+      alert('Не удалось скачать вложение');
+    }
+  };
+
+  const getRoleName = (role: string) => {
+    if (role === 'director') return 'Управляющий';
+    if (role === 'admin') return 'Администратор';
+    return 'Сотрудник';
   };
 
   return (
     <div className="max-w-6xl mx-auto h-[calc(100vh-180px)]">
       <div className="flex card-light rounded-xl h-full overflow-hidden">
-        <div className={`w-full md:w-80 border-r border-gray-200 flex flex-col ${selectedUser ? 'hidden md:flex' : 'flex'}`}>
+
+        {/* Список сотрудников */}
+        <div
+          className={`w-full md:w-80 border-r border-gray-200 flex flex-col ${
+            selectedUser ? 'hidden md:flex' : 'flex'
+          }`}
+        >
           <div className="p-4 border-b border-gray-200">
-            <h3 className="text-gray-800 font-semibold">Сотрудники</h3>
-            <p className="text-gray-600 text-xs mt-1">Выберите сотрудника для чата</p>
+            <h3 className="text-gray-800 font-semibold">
+              Сотрудники
+            </h3>
+
+            <p className="text-gray-600 text-xs mt-1">
+              Выберите сотрудника для чата
+            </p>
+
             <div className="mt-2">
               <SearchBar
                 value={contactSearch}
@@ -125,36 +377,48 @@ export default function Chat({ user }: ChatProps) {
               />
             </div>
           </div>
+
           <div className="flex-1 overflow-y-auto">
-            {filteredUsers.length === 0 ? (
+            {filteredContacts.length === 0 ? (
               <div className="p-4 text-center text-gray-500 text-sm">
-                {otherUsers.length === 0 ? 'Пока нет других сотрудников' : 'Ничего не найдено'}
+                {contacts.length === 0
+                  ? 'Пока нет других сотрудников'
+                  : 'Ничего не найдено'}
               </div>
             ) : (
-              filteredUsers.map((u) => {
-                const unread = getUnreadForUser(u.id);
+              filteredContacts.map((contact) => {
+                const unread = unreadCounts[contact.id] || 0;
+
                 return (
                   <button
-                    key={u.id}
-                    onClick={() => setSelectedUser(u.id)}
+                    key={contact.id}
+                    onClick={() => {
+                      setSelectedUser(contact.id);
+                      setMessageSearch('');
+                    }}
                     className={`w-full flex items-center gap-3 px-4 py-3 text-left transition ${
-                      selectedUser === u.id
+                      selectedUser === contact.id
                         ? 'bg-gradient-to-r from-indigo-50 to-purple-50 border-l-2 border-indigo-500'
                         : 'hover:bg-gray-50'
                     }`}
                   >
                     <div className="w-10 h-10 rounded-full bg-gradient-to-r from-indigo-400 to-purple-500 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-                      {u.name.charAt(0)}
+                      {contact.full_name?.charAt(0) || '?'}
                     </div>
+
                     <div className="flex-1 min-w-0">
-                      <p className="text-gray-800 text-sm font-medium truncate">{u.name}</p>
+                      <p className="text-gray-800 text-sm font-medium truncate">
+                        {contact.full_name}
+                      </p>
+
                       <p className="text-gray-500 text-xs">
-                        {u.role === 'director' ? 'Управляющий' : u.role === 'admin' ? 'Администратор' : 'Сотрудник'}
+                        {getRoleName(contact.role)}
                       </p>
                     </div>
+
                     {unread > 0 && (
-                      <span className="bg-gradient-to-r from-red-500 to-pink-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                        {unread}
+                      <span className="bg-gradient-to-r from-red-500 to-pink-500 text-white text-xs rounded-full min-w-5 h-5 px-1 flex items-center justify-center">
+                        {unread > 99 ? '99+' : unread}
                       </span>
                     )}
                   </button>
@@ -164,38 +428,73 @@ export default function Chat({ user }: ChatProps) {
           </div>
         </div>
 
-        <div className={`flex-1 flex flex-col ${!selectedUser ? 'hidden md:flex' : 'flex'}`}>
+        {/* Область переписки */}
+        <div
+          className={`flex-1 flex flex-col ${
+            !selectedUser ? 'hidden md:flex' : 'flex'
+          }`}
+        >
           {!selectedUser ? (
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center">
-                <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                <svg
+                  className="w-16 h-16 text-gray-400 mx-auto mb-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1}
+                    d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                  />
                 </svg>
-                <p className="text-gray-500">Выберите сотрудника для начала диалога</p>
+
+                <p className="text-gray-500">
+                  Выберите сотрудника для начала диалога
+                </p>
               </div>
             </div>
           ) : (
             <>
+              {/* Заголовок переписки */}
               <div className="p-4 border-b border-gray-200 flex flex-col gap-3">
                 <div className="flex items-center gap-3">
                   <button
                     onClick={() => setSelectedUser(null)}
                     className="md:hidden text-gray-600 hover:text-gray-800"
                   >
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M15 19l-7-7 7-7"
+                      />
                     </svg>
                   </button>
+
                   <div className="w-8 h-8 rounded-full bg-gradient-to-r from-indigo-400 to-purple-500 flex items-center justify-center text-white font-bold text-xs">
-                    {otherUsers.find((u) => u.id === selectedUser)?.name.charAt(0)}
+                    {selectedContact?.full_name?.charAt(0) || '?'}
                   </div>
+
                   <div>
                     <p className="text-gray-800 font-medium text-sm">
-                      {otherUsers.find((u) => u.id === selectedUser)?.name}
+                      {selectedContact?.full_name || 'Сотрудник'}
                     </p>
-                    <p className="text-gray-500 text-xs">Личный чат</p>
+
+                    <p className="text-gray-500 text-xs">
+                      Личный чат
+                    </p>
                   </div>
                 </div>
+
                 <SearchBar
                   value={messageSearch}
                   onChange={setMessageSearch}
@@ -203,22 +502,31 @@ export default function Chat({ user }: ChatProps) {
                 />
               </div>
 
+              {/* Сообщения */}
               <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                {filteredMessages.length === 0 ? (
+                {loading ? (
+                  <div className="text-center py-8 text-gray-500 text-sm">
+                    Загрузка сообщений...
+                  </div>
+                ) : filteredMessages.length === 0 ? (
                   <div className="text-center py-8">
                     <p className="text-gray-500 text-sm">
-                      {messages.length === 0
-                        ? 'Начните диалог'
-                        : messageSearch.trim()
+                      {messageSearch.trim()
                         ? 'Сообщения не найдены'
                         : 'Начните диалог'}
                     </p>
                   </div>
                 ) : (
                   filteredMessages.map((msg) => {
-                    const isMe = msg.senderId === user.id;
+                    const isMe = msg.sender_id === user.id;
+
                     return (
-                      <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                      <div
+                        key={msg.id}
+                        className={`flex ${
+                          isMe ? 'justify-end' : 'justify-start'
+                        }`}
+                      >
                         <div
                           className={`max-w-[70%] rounded-2xl px-4 py-2 ${
                             isMe
@@ -226,55 +534,125 @@ export default function Chat({ user }: ChatProps) {
                               : 'bg-white text-gray-800 rounded-bl-md border border-gray-200'
                           }`}
                         >
-                          {msg.text && <p className="text-sm">{msg.text}</p>}
+                          {msg.text && (
+                            <p className="text-sm whitespace-pre-wrap break-words">
+                              {msg.text}
+                            </p>
+                          )}
+
                           {msg.attachment && (
-                            <div className={`mt-1 p-2 rounded-lg ${isMe ? 'bg-white/20' : 'bg-gray-50'}`}>
+                            <div
+                              className={`mt-1 p-2 rounded-lg ${
+                                isMe ? 'bg-white/20' : 'bg-gray-50'
+                              }`}
+                            >
                               <div className="flex items-center gap-2">
-                                <span className="text-lg flex-shrink-0">{getFileIcon(msg.attachment.name)}</span>
+                                <span className="text-lg flex-shrink-0">
+                                  {getFileIcon(msg.attachment.name)}
+                                </span>
+
                                 <div className="min-w-0 flex-1">
-                                  <p className="text-xs font-medium truncate">{msg.attachment.name}</p>
-                                  <p className={`text-xs ${isMe ? 'text-indigo-100' : 'text-gray-500'}`}>
+                                  <p className="text-xs font-medium truncate">
+                                    {msg.attachment.name}
+                                  </p>
+
+                                  <p
+                                    className={`text-xs ${
+                                      isMe
+                                        ? 'text-indigo-100'
+                                        : 'text-gray-500'
+                                    }`}
+                                  >
                                     {formatFileSize(msg.attachment.size)}
                                   </p>
                                 </div>
-                                <FileActions
-                                  dataUrl={msg.attachment.dataUrl}
-                                  filename={msg.attachment.name}
-                                  compact
-                                />
+
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleDownload(msg.attachment!)
+                                  }
+                                  className="p-1 hover:opacity-70"
+                                  title="Скачать файл"
+                                >
+                                  <svg
+                                    className="w-5 h-5"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                                    />
+                                  </svg>
+                                </button>
                               </div>
                             </div>
                           )}
-                          <p className={`text-xs mt-1 ${isMe ? 'text-indigo-100' : 'text-gray-500'}`}>
+
+                          <p
+                            className={`text-xs mt-1 ${
+                              isMe ? 'text-indigo-100' : 'text-gray-500'
+                            }`}
+                          >
                             {formatMSKDateTime(msg.timestamp)}
+                            {isMe && msg.read ? ' · Прочитано' : ''}
                           </p>
                         </div>
                       </div>
                     );
                   })
                 )}
+
                 <div ref={messagesEndRef} />
               </div>
 
-              <form onSubmit={handleSend} className="p-4 border-t border-gray-200">
+              {/* Форма отправки */}
+              <form
+                onSubmit={handleSend}
+                className="p-4 border-t border-gray-200"
+              >
                 {attachment && (
                   <div className="mb-2 p-2 bg-white border border-gray-200 rounded-lg flex items-center gap-2">
-                    <span className="text-lg">{getFileIcon(attachment.name)}</span>
+                    <span className="text-lg">
+                      {getFileIcon(attachment.name)}
+                    </span>
+
                     <div className="flex-1 min-w-0">
-                      <p className="text-gray-800 text-sm truncate">{attachment.name}</p>
-                      <p className="text-gray-500 text-xs">{formatFileSize(attachment.size)}</p>
+                      <p className="text-gray-800 text-sm truncate">
+                        {attachment.name}
+                      </p>
+
+                      <p className="text-gray-500 text-xs">
+                        {formatFileSize(attachment.size)}
+                      </p>
                     </div>
+
                     <button
                       type="button"
                       onClick={() => setAttachment(null)}
                       className="text-gray-400 hover:text-red-500 transition"
                     >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M6 18L18 6M6 6l12 12"
+                        />
                       </svg>
                     </button>
                   </div>
                 )}
+
                 <div className="flex gap-2">
                   <input
                     ref={fileInputRef}
@@ -282,30 +660,61 @@ export default function Chat({ user }: ChatProps) {
                     onChange={handleFileAttach}
                     className="hidden"
                   />
+
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     className="p-2 text-gray-600 hover:text-indigo-600 transition rounded-lg hover:bg-gray-50"
                     title="Прикрепить файл"
                   >
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
+                      />
                     </svg>
                   </button>
+
                   <input
                     type="text"
                     value={messageText}
                     onChange={(e) => setMessageText(e.target.value)}
-                    className="flex-1 px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    className="flex-1 min-w-0 px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-400"
                     placeholder="Введите сообщение..."
                   />
+
                   <button
                     type="submit"
-                    className="px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-lg hover:from-indigo-600 hover:to-purple-700 transition shadow-md"
+                    disabled={
+                      sending ||
+                      (!messageText.trim() && !attachment)
+                    }
+                    className="px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-lg hover:from-indigo-600 hover:to-purple-700 transition shadow-md disabled:opacity-50"
                   >
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                    </svg>
+                    {sending ? (
+                      <span className="text-sm">...</span>
+                    ) : (
+                      <svg
+                        className="w-5 h-5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                        />
+                      </svg>
+                    )}
                   </button>
                 </div>
               </form>

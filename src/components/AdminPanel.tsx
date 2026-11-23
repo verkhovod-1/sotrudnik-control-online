@@ -359,10 +359,28 @@ function InviteModal({
         }
       );
 
-      if (error) {
-        throw new Error(error.message || 'Ошибка отправки приглашения');
-      }
+      
+if (error) {
+  let message = error.message || 'Ошибка отправки приглашения';
 
+  const response = (error as any).context;
+
+  if (response && typeof response.clone === 'function') {
+    try {
+      const details = await response.clone().json();
+      message =
+        details.error ||
+        details.message ||
+        details.msg ||
+        JSON.stringify(details);
+    } catch {
+      // Если тело ответа не удалось прочитать,
+      // оставляем исходное сообщение
+    }
+  }
+
+  throw new Error(message);
+}
       if (data?.error) {
         throw new Error(data.error);
       }

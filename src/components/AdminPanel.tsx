@@ -335,6 +335,28 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                       </button>
                     </div>
                   )}
+
+                  {canManageRoles && u.id !== user.id && !u.isActive && (
+                    <button
+                      onClick={() => handleActivate(u.id)}
+                      className="px-2.5 py-1 text-xs text-green-700 bg-green-100 hover:bg-green-200 rounded-lg transition"
+                      title="Снова включить учётную запись"
+                    >
+                      Включить
+                    </button>
+                  )}
+
+                  {(user.role === 'director' ||
+                    (user.role === 'admin' && u.role === 'employee')) &&
+                    u.id !== user.id && (
+                      <button
+                        onClick={() => handleDelete(u)}
+                        className="px-2.5 py-1 text-xs text-red-700 bg-red-100 hover:bg-red-200 rounded-lg transition"
+                        title="Полностью удалить участника"
+                      >
+                        Удалить
+                      </button>
+                    )}
                 </div>
               </div>
             ))}
@@ -402,28 +424,28 @@ function InviteModal({
         }
       );
 
-      
-if (error) {
-  let message = error.message || 'Ошибка отправки приглашения';
+      if (error) {
+        let message = error.message || 'Ошибка отправки приглашения';
 
-  const response = (error as any).context;
+        const response = (error as any).context;
 
-  if (response && typeof response.clone === 'function') {
-    try {
-      const details = await response.clone().json();
-      message =
-        details.error ||
-        details.message ||
-        details.msg ||
-        JSON.stringify(details);
-    } catch {
-      // Если тело ответа не удалось прочитать,
-      // оставляем исходное сообщение
-    }
-  }
+        if (response && typeof response.clone === 'function') {
+          try {
+            const details = await response.clone().json();
+            message =
+              details.error ||
+              details.message ||
+              details.msg ||
+              JSON.stringify(details);
+          } catch {
+            // Если тело ответа не удалось прочитать,
+            // оставляем исходное сообщение
+          }
+        }
 
-  throw new Error(message);
-}
+        throw new Error(message);
+      }
+
       if (data?.error) {
         throw new Error(data.error);
       }

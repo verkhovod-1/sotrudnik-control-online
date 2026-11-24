@@ -124,6 +124,49 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     }
   };
 
+  const handleActivate = async (userId: string) => {
+    if (!confirm('Снова включить учётную запись участника?')) return;
+
+    try {
+      await callFunction({
+        action: 'activate',
+        user_id: userId,
+      });
+
+      alert('Учётная запись снова активна');
+      await loadUsers();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Не удалось включить участника');
+    }
+  };
+
+  const handleDelete = async (u: User) => {
+    const confirmation = prompt(
+      `ВНИМАНИЕ! Учётная запись будет удалена без возможности восстановления.\n\n` +
+      `История задач, сообщений, документов и заметок сохранится.\n\n` +
+      `Для подтверждения введи email участника:\n${u.email}`
+    );
+
+    if (confirmation === null) return;
+
+    if (confirmation.trim().toLowerCase() !== u.email.toLowerCase()) {
+      alert('Email не совпадает. Удаление отменено.');
+      return;
+    }
+
+    try {
+      await callFunction({
+        action: 'delete_user',
+        user_id: u.id,
+      });
+
+      alert('Участник удалён. История сохранена.');
+      await loadUsers();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Не удалось удалить участника');
+    }
+  };
+
   const getRoleBadge = (role: string) => {
     switch (role) {
       case 'director':

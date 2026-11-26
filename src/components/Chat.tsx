@@ -1,4 +1,4 @@
-onClick={() => {
+
   shouldAutoScrollRef.current = true;
   previousLastMessageIdRef.current = null;
 

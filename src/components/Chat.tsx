@@ -191,12 +191,12 @@ export default function Chat({ user }: ChatProps) {
 
     refresh();
 
-    const interval = window.setInterval(() => {
-      if (!cancelled) {
-        loadMessages();
-        loadUnreadCounts();
-      }
-    }, 3000);
+   const interval = window.setInterval(async () => {
+  if (!cancelled) {
+    await loadMessages();
+    await markAsRead();
+  }
+}, 3000);
 
     return () => {
       cancelled = true;

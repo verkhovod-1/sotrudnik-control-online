@@ -54,10 +54,15 @@ export default function Chat({ user }: ChatProps) {
   const [sending, setSending] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Управление автоматической прокруткой
+  // Контейнер переписки
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+
+  // Разрешение на автоматическую прокрутку
   const shouldAutoScrollRef = useRef(true);
+
+  // ID последнего обработанного сообщения
+  const previousLastMessageIdRef = useRef<string | null>(null);
 
   const selectedContact = contacts.find(
     (contact) => contact.id === selectedUser
@@ -170,6 +175,7 @@ export default function Chat({ user }: ChatProps) {
   useEffect(() => {
     if (!selectedUser) {
       setMessages([]);
+      previousLastMessageIdRef.current = null;
       return;
     }
 
@@ -203,11 +209,47 @@ export default function Chat({ user }: ChatProps) {
     loadUnreadCounts,
   ]);
 
-  // Автоматическая прокрутка только при необходимости
+  // Прокрутка только при появлении нового сообщения
   useEffect(() => {
+    if (messages.length === 0) return;
+
+    const lastMessage = messages[messages.length - 1];
+    const previousId = previousLastMessageIdRef.current;
+
+    // Первоначальная загрузка переписки
+    if (previousId === null) {
+      previousLastMessageIdRef.current = lastMessage.id;
+
+      if (shouldAutoScrollRef.current) {
+        requestAnimationFrame(() => {
+          const container = messagesContainerRef.current;
+
+          if (container && shouldAutoScrollRef.current) {
+            container.scrollTop = container.scrollHeight;
+          }
+        });
+      }
+
+      return;
+    }
+
+    // Если последнее сообщение не изменилось,
+    // ничего не прокручиваем
+    if (previousId === lastMessage.id) {
+      return;
+    }
+
+    previousLastMessageIdRef.current = lastMessage.id;
+
+    // Новое сообщение прокручивает чат вниз
+    // только если пользователь уже находился внизу
     if (shouldAutoScrollRef.current) {
-      messagesEndRef.current?.scrollIntoView({
-        behavior: 'smooth',
+      requestAnimationFrame(() => {
+        const container = messagesContainerRef.current;
+
+        if (container && shouldAutoScrollRef.current) {
+          container.scrollTop = container.scrollHeight;
+        }
       });
     }
   }, [messages]);
@@ -407,6 +449,7 @@ export default function Chat({ user }: ChatProps) {
                     key={contact.id}
                     onClick={() => {
                       shouldAutoScrollRef.current = true;
+                      previousLastMessageIdRef.current = null;
                       setSelectedUser(contact.id);
                       setMessageSearch('');
                     }}
@@ -444,7 +487,7 @@ export default function Chat({ user }: ChatProps) {
 
         {/* Область переписки */}
         <div
-          className={`flex-1 flex flex-col ${
+          className={`flex-1 flex flex-col min-h-0 ${
             !selectedUser ? 'hidden md:flex' : 'flex'
           }`}
         >
@@ -518,7 +561,8 @@ export default function Chat({ user }: ChatProps) {
 
               {/* Сообщения */}
               <div
-                className="flex-1 overflow-y-auto p-4 space-y-3"
+                ref={messagesContainerRef}
+                className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-3"
                 onScroll={(e) => {
                   const element = e.currentTarget;
 
@@ -630,8 +674,6 @@ export default function Chat({ user }: ChatProps) {
                     );
                   })
                 )}
-
-                <div ref={messagesEndRef} />
               </div>
 
               {/* Форма отправки */}

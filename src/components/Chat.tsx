@@ -372,7 +372,48 @@ export default function Chat({ user }: ChatProps) {
       setSending(false);
     }
   };
+  // Удаление собственного сообщения
+  const handleDeleteMessage = async (msg: ChatMessage) => {
+    const confirmed = window.confirm(
+      'Удалить это сообщение у обоих участников?'
+    );
 
+    if (!confirmed) return;
+
+    try {
+      const { error } = await supabase
+        .from('chat_messages')
+        .delete()
+        .eq('id', msg.id)
+        .eq('sender_id', user.id);
+
+      if (error) {
+        throw error;
+      }
+
+      // Удаляем вложение из хранилища, если оно есть
+      if (msg.attachment?.file_path) {
+        const { error: storageError } = await supabase.storage
+          .from('synchron-chat')
+          .remove([msg.attachment.file_path]);
+
+        if (storageError) {
+          console.error('Ошибка удаления вложения:', storageError);
+        }
+      }
+
+      await loadMessages();
+      await loadUnreadCounts();
+    } catch (error) {
+      console.error('Ошибка удаления сообщения:', error);
+      alert(
+        'Не удалось удалить сообщение: ' +
+        (error instanceof Error
+          ? error.message
+          : JSON.stringify(error))
+      );
+    }
+  };
   // Скачивание вложения
   const handleDownload = async (file: ChatAttachment) => {
     try {

@@ -312,7 +312,12 @@ export default function Chat({ user }: ChatProps) {
         }
       }
 
-      alert('Не удалось отправить сообщение. Попробуйте ещё раз.');
+      alert(
+  'Ошибка отправки: ' +
+  (error instanceof Error
+    ? error.message
+    : JSON.stringify(error))
+);
     } finally {
       setSending(false);
     }

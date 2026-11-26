@@ -1,4 +1,16 @@
+onClick={() => {
+  shouldAutoScrollRef.current = true;
+  previousLastMessageIdRef.current = null;
 
+  // Сразу обнуляем счётчик выбранного сотрудника
+  setUnreadCounts((prev) => ({
+    ...prev,
+    [contact.id]: 0,
+  }));
+
+  setSelectedUser(contact.id);
+  setMessageSearch('');
+}}
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { User } from '../types';

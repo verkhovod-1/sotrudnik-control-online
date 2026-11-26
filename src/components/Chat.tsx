@@ -55,7 +55,10 @@ export default function Chat({ user }: ChatProps) {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-const shouldAutoScrollRef = useRef(true);
+
+  // Управление автоматической прокруткой
+  const shouldAutoScrollRef = useRef(true);
+
   const selectedContact = contacts.find(
     (contact) => contact.id === selectedUser
   );
@@ -200,11 +203,13 @@ const shouldAutoScrollRef = useRef(true);
     loadUnreadCounts,
   ]);
 
-  // Автоматическая прокрутка вниз
+  // Автоматическая прокрутка только при необходимости
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({
-      behavior: 'smooth',
-    });
+    if (shouldAutoScrollRef.current) {
+      messagesEndRef.current?.scrollIntoView({
+        behavior: 'smooth',
+      });
+    }
   }, [messages]);
 
   // Выбор файла
@@ -295,6 +300,9 @@ const shouldAutoScrollRef = useRef(true);
       setMessageText('');
       setAttachment(null);
 
+      // После отправки разрешаем прокрутку вниз
+      shouldAutoScrollRef.current = true;
+
       await loadMessages();
       await loadUnreadCounts();
     } catch (error) {
@@ -313,11 +321,11 @@ const shouldAutoScrollRef = useRef(true);
       }
 
       alert(
-  'Ошибка отправки: ' +
-  (error instanceof Error
-    ? error.message
-    : JSON.stringify(error))
-);
+        'Ошибка отправки: ' +
+        (error instanceof Error
+          ? error.message
+          : JSON.stringify(error))
+      );
     } finally {
       setSending(false);
     }
@@ -398,6 +406,7 @@ const shouldAutoScrollRef = useRef(true);
                   <button
                     key={contact.id}
                     onClick={() => {
+                      shouldAutoScrollRef.current = true;
                       setSelectedUser(contact.id);
                       setMessageSearch('');
                     }}
@@ -508,7 +517,17 @@ const shouldAutoScrollRef = useRef(true);
               </div>
 
               {/* Сообщения */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              <div
+                className="flex-1 overflow-y-auto p-4 space-y-3"
+                onScroll={(e) => {
+                  const element = e.currentTarget;
+
+                  shouldAutoScrollRef.current =
+                    element.scrollHeight -
+                    element.scrollTop -
+                    element.clientHeight < 100;
+                }}
+              >
                 {loading ? (
                   <div className="text-center py-8 text-gray-500 text-sm">
                     Загрузка сообщений...

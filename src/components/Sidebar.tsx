@@ -80,10 +80,10 @@ export default function Sidebar({ activeSection, onSectionChange, user, unreadMe
       <div className="p-4 border-b border-gray-300">
         <div className="flex items-center gap-3">
           <img
-            src="https://s6.iimage.su/s/23/gOCALIHxd0QoEF5cowByWdXrC3TXSVUt0oZtarOLN.png"
-            alt="Синхрон"
-            className="w-20 h-20 rounded-lg object-contain flex-shrink-0"
-          />
+  src={`${import.meta.env.BASE_URL}logo.svg`}
+  alt="Логотип Синхрон"
+  className="w-20 h-20 rounded-2xl object-contain flex-shrink-0"
+/>
           <div>
             <h1 className="text-gray-800 font-bold text-lg">Синхрон</h1>
             <p className="text-gray-500 text-xs">CRM система</p>

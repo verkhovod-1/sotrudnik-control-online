@@ -357,8 +357,9 @@ export default function Chat({ user }: ChatProps) {
       // Если есть вложение, сначала загружаем его в Storage
       if (attachment) {
         const safeName = attachment.name
-          .replace(/[\/\\]/g, '_')
-          .replace(/[\r\n]/g, '_');
+  .normalize('NFKD')
+  .replace(/[^a-zA-Z0-9._-]/g, '_')
+  .replace(/_+/g, '_');
 
         const filePath =
           `${user.id}/${crypto.randomUUID()}-${safeName}`;

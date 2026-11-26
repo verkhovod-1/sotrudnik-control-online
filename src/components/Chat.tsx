@@ -447,12 +447,19 @@ export default function Chat({ user }: ChatProps) {
                 return (
                   <button
                     key={contact.id}
-                    onClick={() => {
-                      shouldAutoScrollRef.current = true;
-                      previousLastMessageIdRef.current = null;
-                      setSelectedUser(contact.id);
-                      setMessageSearch('');
-                    }}
+                   onClick={() => {
+  shouldAutoScrollRef.current = true;
+  previousLastMessageIdRef.current = null;
+
+  // Сразу обнуляем счётчик выбранного сотрудника
+  setUnreadCounts((prev) => ({
+    ...prev,
+    [contact.id]: 0,
+  }));
+
+  setSelectedUser(contact.id);
+  setMessageSearch('');
+}}
                     className={`w-full flex items-center gap-3 px-4 py-3 text-left transition ${
                       selectedUser === contact.id
                         ? 'bg-gradient-to-r from-indigo-50 to-purple-50 border-l-2 border-indigo-500'

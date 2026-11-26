@@ -1,16 +1,4 @@
 
-  shouldAutoScrollRef.current = true;
-  previousLastMessageIdRef.current = null;
-
-  // Сразу обнуляем счётчик выбранного сотрудника
-  setUnreadCounts((prev) => ({
-    ...prev,
-    [contact.id]: 0,
-  }));
-
-  setSelectedUser(contact.id);
-  setMessageSearch('');
-}}
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { User } from '../types';
@@ -203,12 +191,12 @@ export default function Chat({ user }: ChatProps) {
 
     refresh();
 
-    const interval = window.setInterval(async () => {
-  if (!cancelled) {
-    await loadMessages();
-    await markAsRead();
-  }
-}, 3000);
+    const interval = window.setInterval(() => {
+      if (!cancelled) {
+        loadMessages();
+        loadUnreadCounts();
+      }
+    }, 3000);
 
     return () => {
       cancelled = true;

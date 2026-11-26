@@ -4,7 +4,8 @@ export const ALLOWED_EXTENSIONS = {
   images: ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'],
   archives: ['zip', 'rar', '7z', 'tar', 'gz'],
   presentations: ['ppt', 'pptx'],
-  media: ['mp3', 'mp4', 'avi', 'mkv'],
+  audio: ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac', 'opus', 'amr', '3gp'],
+  media: ['mp4', 'avi', 'mkv'],
 };
 
 export const ALL_ALLOWED_EXTENSIONS = [

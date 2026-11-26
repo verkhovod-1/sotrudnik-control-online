@@ -40,7 +40,68 @@ interface ChatMessage {
 }
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024;
+// Проверка, является ли вложение аудиофайлом
+function isAudioFile(filename: string): boolean {
+  return /\.(mp3|wav|m4a|aac|ogg|flac|opus|amr|3gp)$/i.test(filename);
+}
 
+// Встроенный аудиоплеер
+function AudioAttachment({ file }: { file: ChatAttachment }) {
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [audioError, setAudioError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadAudio = async () => {
+      const { data, error } = await supabase.storage
+        .from('synchron-chat')
+        .createSignedUrl(file.file_path, 3600);
+
+      if (cancelled) return;
+
+      if (error || !data?.signedUrl) {
+        setAudioError(true);
+        return;
+      }
+
+      setAudioUrl(data.signedUrl);
+    };
+
+    loadAudio();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [file.file_path]);
+
+  if (audioError) {
+    return (
+      <p className="text-xs text-red-500 mt-2">
+        Не удалось загрузить аудио
+      </p>
+    );
+  }
+
+  if (!audioUrl) {
+    return (
+      <p className="text-xs opacity-70 mt-2">
+        Загрузка аудио...
+      </p>
+    );
+  }
+
+  return (
+    <audio
+      controls
+      preload="metadata"
+      src={audioUrl}
+      className="w-full mt-2"
+    >
+      Ваш браузер не поддерживает воспроизведение аудио.
+    </audio>
+  );
+}
 export default function Chat({ user }: ChatProps) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [selectedUser, setSelectedUser] = useState<string | null>(null);

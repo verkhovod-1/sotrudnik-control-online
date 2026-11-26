@@ -767,6 +767,9 @@ export default function Chat({ user }: ChatProps) {
                                   </svg>
                                 </button>
                               </div>
+{isAudioFile(msg.attachment.name) && (
+  <AudioAttachment file={msg.attachment} />
+)}
                             </div>
                           )}
 

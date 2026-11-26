@@ -66,10 +66,10 @@ export default function Login({ onLogin, onForgotPassword }: LoginProps) {
         <div className="card-light rounded-2xl p-8">
           <div className="text-center mb-8">
             <img
-              src="https://s6.iimage.su/s/23/gOCALIHxd0QoEF5cowByWdXrC3TXSVUt0oZtarOLN.png"
-              alt="Синхрон"
-              className="w-24 h-24 object-contain mb-4 mx-auto"
-            />
+  src={`${import.meta.env.BASE_URL}logo.svg`}
+  alt="Синхрон"
+  className="w-24 h-24 object-contain mb-4 mx-auto"
+/>
             <h1 className="text-3xl font-bold gradient-text mb-2">Синхрон</h1>
             <p className="text-gray-600 text-sm">Система управления задачами</p>
           </div>

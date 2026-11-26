@@ -55,7 +55,7 @@ export default function Chat({ user }: ChatProps) {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
+const shouldAutoScrollRef = useRef(true);
   const selectedContact = contacts.find(
     (contact) => contact.id === selectedUser
   );

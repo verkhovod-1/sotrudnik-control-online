@@ -49,8 +49,10 @@ export function getFileIcon(filename: string): string {
       return '🖼️';
     case 'archives':
       return '📦';
-    case 'presentations':
+        case 'presentations':
       return '📊';
+    case 'audio':
+      return '🎵';
     case 'media':
       return '🎬';
     default:

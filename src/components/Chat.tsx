@@ -709,14 +709,39 @@ export default function Chat({ user }: ChatProps) {
                             </div>
                           )}
 
-                          <p
-                            className={`text-xs mt-1 ${
-                              isMe ? 'text-indigo-100' : 'text-gray-500'
-                            }`}
-                          >
-                            {formatMSKDateTime(msg.timestamp)}
-                            {isMe && msg.read ? ' · Прочитано' : ''}
-                          </p>
+                                                    <div className="flex items-center justify-between gap-3 mt-1">
+                            <p
+                              className={`text-xs ${
+                                isMe ? 'text-indigo-100' : 'text-gray-500'
+                              }`}
+                            >
+                              {formatMSKDateTime(msg.timestamp)}
+                              {isMe && msg.read ? ' · Прочитано' : ''}
+                            </p>
+
+                            {isMe && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteMessage(msg)}
+                                className="text-indigo-100 hover:text-red-200 transition"
+                                title="Удалить сообщение"
+                              >
+                                <svg
+                                  className="w-4 h-4"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3m-9 0h14"
+                                  />
+                                </svg>
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     );

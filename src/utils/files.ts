@@ -8,14 +8,15 @@ export const ALLOWED_EXTENSIONS = {
   media: ['mp4', 'avi', 'mkv'],
 };
 
+
 export const ALL_ALLOWED_EXTENSIONS = [
   ...ALLOWED_EXTENSIONS.documents,
   ...ALLOWED_EXTENSIONS.images,
   ...ALLOWED_EXTENSIONS.archives,
   ...ALLOWED_EXTENSIONS.presentations,
+  ...ALLOWED_EXTENSIONS.audio,
   ...ALLOWED_EXTENSIONS.media,
 ];
-
 // Получение расширения файла
 export function getFileExtension(filename: string): string {
   return filename.split('.').pop()?.toLowerCase() || '';

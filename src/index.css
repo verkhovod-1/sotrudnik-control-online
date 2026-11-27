@@ -176,3 +176,19 @@ body {
   color: #93c5fd;
 }
 
+/* Исправление выделенного сотрудника в чате в тёмной теме */
+:root[data-theme='dark'] .chat-contact-selected {
+  background: linear-gradient(90deg, #312e81 0%, #4c1d95 100%) !important;
+}
+
+:root[data-theme='dark'] .chat-contact-selected .text-gray-800 {
+  color: #f9fafb !important;
+}
+
+:root[data-theme='dark'] .chat-contact-selected .text-gray-500 {
+  color: #cbd5e1 !important;
+}
+
+:root[data-theme='dark'] .chat-contact-unselected:hover {
+  background-color: #374151 !important;
+}

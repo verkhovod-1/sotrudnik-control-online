@@ -1,4 +1,3 @@
-
 import { useState, useEffect, type FormEvent } from 'react';
 import { User, Document, DocumentCategory } from '../types';
 import { formatMSKDateTime, findUserById } from '../store';
@@ -117,7 +116,6 @@ export default function Documents({ user }: DocumentsProps) {
 
     setError('');
 
-    // Сначала удаляем запись из таблицы.
     const { error: dbError } = await supabase
       .from('documents')
       .delete()
@@ -129,7 +127,6 @@ export default function Documents({ user }: DocumentsProps) {
       return;
     }
 
-    // Затем удаляем сам файл из Storage.
     const cloudDoc = allDocuments.find((item) => item.id === doc.id);
 
     if (cloudDoc) {
@@ -253,9 +250,7 @@ export default function Documents({ user }: DocumentsProps) {
                       </div>
                     </div>
 
-                    <CloudFileActions
-                      document={doc}
-                    />
+                    <CloudFileActions document={doc} />
 
                     {(doc.uploadedBy === user.id ||
                       user.role === 'director' ||
@@ -308,6 +303,17 @@ function CloudFileActions({ document: doc }: { document: Document }) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewType, setPreviewType] = useState('');
   const [previewName, setPreviewName] = useState('');
+
+  // Освобождаем временный URL при закрытии окна
+  // или при открытии другого файла.
+  useEffect(() => {
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
+
   const getFileBlob = async (): Promise<Blob | null> => {
     const path = `${doc.uploadedBy}/${doc.id}-${doc.fileName}`;
 
@@ -324,6 +330,7 @@ function CloudFileActions({ document: doc }: { document: Document }) {
 
     return data;
   };
+
   const handlePreview = async () => {
     if (busy) return;
 
@@ -335,19 +342,23 @@ function CloudFileActions({ document: doc }: { document: Document }) {
 
       const url = URL.createObjectURL(blob);
 
-      setPreviewUrl((oldUrl) => {
-        if (oldUrl) URL.revokeObjectURL(oldUrl);
-        return url;
-      });
-
       setPreviewType(blob.type || doc.fileType || '');
       setPreviewName(doc.fileName);
+      setPreviewUrl(url);
     } finally {
       setBusy(false);
     }
   };
+
+  const handleClosePreview = () => {
+    setPreviewUrl(null);
+    setPreviewType('');
+    setPreviewName('');
+  };
+
   const handleDownload = async () => {
     if (busy) return;
+
     setBusy(true);
 
     try {
@@ -356,8 +367,10 @@ function CloudFileActions({ document: doc }: { document: Document }) {
 
       const url = URL.createObjectURL(blob);
       const link = window.document.createElement('a');
+
       link.href = url;
       link.download = doc.fileName;
+
       window.document.body.appendChild(link);
       link.click();
       link.remove();
@@ -371,7 +384,6 @@ function CloudFileActions({ document: doc }: { document: Document }) {
   const handlePrint = async () => {
     if (busy) return;
 
-    // Открываем окно сразу, чтобы браузер не заблокировал его.
     const printWindow = window.open('', '_blank');
 
     if (!printWindow) {
@@ -402,71 +414,157 @@ function CloudFileActions({ document: doc }: { document: Document }) {
     }
   };
 
-  return (
-    <div className="flex gap-1 flex-shrink-0">
-      <button
-        onClick={() => void handlePreview()}
-        disabled={busy}
-        className="text-gray-400 hover:text-indigo-600 transition p-1 disabled:opacity-40"
-        title="Открыть документ"
-      >
-        <svg
-          className="w-4 h-4"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"
-          />
-          <circle cx="12" cy="12" r="3" strokeWidth={2} />
-        </svg>
-      </button>
-      <button
-        onClick={() => void handleDownload()}
-        disabled={busy}
-        className="text-gray-400 hover:text-indigo-600 transition p-1 disabled:opacity-40"
-        title="Скачать"
-      >
-        <svg
-          className="w-4 h-4"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-          />
-        </svg>
-      </button>
+  const isPdf =
+    previewType === 'application/pdf' ||
+    previewName.toLowerCase().endsWith('.pdf');
 
-      <button
-        onClick={() => void handlePrint()}
-        disabled={busy}
-        className="text-gray-400 hover:text-green-600 transition p-1 disabled:opacity-40"
-        title="Печать"
-      >
-        <svg
-          className="w-4 h-4"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
+  const isImage = previewType.startsWith('image/');
+  const isAudio = previewType.startsWith('audio/');
+  const isVideo = previewType.startsWith('video/');
+  const isText = previewType.startsWith('text/');
+
+  return (
+    <>
+      <div className="flex gap-1 flex-shrink-0">
+        <button
+          onClick={() => void handlePreview()}
+          disabled={busy}
+          className="text-gray-400 hover:text-indigo-600 transition p-1 disabled:opacity-40"
+          title="Открыть документ"
         >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4H9v4zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"
-          />
-        </svg>
-      </button>
-    </div>
+          <svg
+            className="w-4 h-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"
+            />
+            <circle cx="12" cy="12" r="3" strokeWidth={2} />
+          </svg>
+        </button>
+
+        <button
+          onClick={() => void handleDownload()}
+          disabled={busy}
+          className="text-gray-400 hover:text-indigo-600 transition p-1 disabled:opacity-40"
+          title="Скачать"
+        >
+          <svg
+            className="w-4 h-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+            />
+          </svg>
+        </button>
+
+        <button
+          onClick={() => void handlePrint()}
+          disabled={busy}
+          className="text-gray-400 hover:text-green-600 transition p-1 disabled:opacity-40"
+          title="Печать"
+        >
+          <svg
+            className="w-4 h-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4H9v4zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"
+            />
+          </svg>
+        </button>
+      </div>
+
+      {previewUrl && (
+        <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[95vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between gap-3 p-4 border-b border-gray-200">
+              <p className="font-semibold text-gray-800 truncate">
+                {previewName}
+              </p>
+
+              <button
+                onClick={handleClosePreview}
+                className="text-gray-500 hover:text-red-600 text-2xl leading-none px-2"
+                title="Закрыть"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="flex-1 min-h-0 overflow-auto bg-gray-100 flex items-center justify-center p-3">
+              {isImage ? (
+                <img
+                  src={previewUrl}
+                  alt={previewName}
+                  className="max-w-full max-h-[75vh] object-contain"
+                />
+              ) : isPdf ? (
+                <iframe
+                  src={previewUrl}
+                  title={previewName}
+                  className="w-full h-[75vh] bg-white"
+                />
+              ) : isAudio ? (
+                <audio
+                  controls
+                  src={previewUrl}
+                  className="w-full max-w-xl"
+                />
+              ) : isVideo ? (
+                <video
+                  controls
+                  src={previewUrl}
+                  className="max-w-full max-h-[75vh]"
+                />
+              ) : isText ? (
+                <iframe
+                  src={previewUrl}
+                  title={previewName}
+                  className="w-full h-[75vh] bg-white"
+                />
+              ) : (
+                <div className="text-center p-6">
+                  <div className="text-5xl mb-4">📄</div>
+
+                  <p className="text-gray-700 font-medium mb-2">
+                    Предпросмотр этого формата не поддерживается
+                  </p>
+
+                  <p className="text-gray-500 text-sm mb-4">
+                    Скачайте файл, чтобы открыть его на устройстве.
+                  </p>
+
+                  <button
+                    onClick={() => void handleDownload()}
+                    disabled={busy}
+                    className="px-5 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    Скачать файл
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -507,8 +605,6 @@ function UploadDocModal({
     try {
       const documentId = crypto.randomUUID();
 
-      // Важно: первый сегмент пути — UID пользователя.
-      // Это соответствует Storage INSERT policy.
       const safeFileName = selectedFile.name.replace(/[\\/]/g, '_');
       uploadedPath = `${user.id}/${documentId}-${safeFileName}`;
 
@@ -538,9 +634,9 @@ function UploadDocModal({
         });
 
       if (insertError) {
-        // Если запись в таблицу не удалась, удаляем загруженный файл.
         await supabase.storage.from(BUCKET).remove([uploadedPath]);
         uploadedPath = '';
+
         throw new Error(
           `Файл загружен, но запись не сохранена: ${insertError.message}`
         );

@@ -15,9 +15,27 @@ type PasswordSetupProps = {
   onSetPassword: (password: string) => Promise<LoginResult>;
 };
 
+function EyeIcon({ visible }: { visible: boolean }) {
+  return visible ? (
+    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 3l18 18" />
+      <path d="M10.6 10.6a2 2 0 002.8 2.8" />
+      <path d="M9.9 5.2A10.8 10.8 0 0112 5c5 0 8.3 4.2 9.5 7-.4 1-1.2 2.2-2.4 3.3" />
+      <path d="M6.6 6.6C4.4 7.8 3 10 2.5 12c.5 1.2 1.5 2.8 3.5 4.2A10.8 10.8 0 0012 19c1 0 2-.2 2.9-.5" />
+    </svg>
+  ) : (
+    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
 function PasswordSetup({ onSetPassword }: PasswordSetupProps) {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
@@ -37,13 +55,17 @@ function PasswordSetup({ onSetPassword }: PasswordSetupProps) {
 
     setIsSaving(true);
 
-    const result = await onSetPassword(password);
+    try {
+      const result = await onSetPassword(password);
 
-    if (!result.success) {
-      setError(result.error || 'Не удалось установить пароль.');
+      if (!result.success) {
+        setError(result.error || 'Не удалось установить пароль.');
+      }
+    } catch {
+      setError('Ошибка подключения. Попробуйте ещё раз.');
+    } finally {
+      setIsSaving(false);
     }
-
-    setIsSaving(false);
   };
 
   return (
@@ -63,30 +85,52 @@ function PasswordSetup({ onSetPassword }: PasswordSetupProps) {
         <label className="mb-2 block text-sm text-gray-300">
           Новый пароль
         </label>
-        <input
-          type="password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          autoComplete="new-password"
-          minLength={8}
-          required
-          className="mb-4 w-full rounded-lg border border-gray-600 bg-gray-700 p-3 text-white outline-none focus:border-blue-500"
-          placeholder="Не менее 8 символов"
-        />
+        <div className="relative mb-4">
+          <input
+            type={showPassword ? 'text' : 'password'}
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            autoComplete="new-password"
+            minLength={8}
+            required
+            className="w-full rounded-lg border border-gray-600 bg-gray-700 p-3 pr-12 text-white outline-none focus:border-blue-500"
+            placeholder="Не менее 8 символов"
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword((value) => !value)}
+            aria-label={showPassword ? 'Скрыть пароль' : 'Показать пароль'}
+            title={showPassword ? 'Скрыть пароль' : 'Показать пароль'}
+            className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-300 hover:text-white"
+          >
+            <EyeIcon visible={showPassword} />
+          </button>
+        </div>
 
         <label className="mb-2 block text-sm text-gray-300">
           Повторите пароль
         </label>
-        <input
-          type="password"
-          value={confirmPassword}
-          onChange={(event) => setConfirmPassword(event.target.value)}
-          autoComplete="new-password"
-          minLength={8}
-          required
-          className="mb-4 w-full rounded-lg border border-gray-600 bg-gray-700 p-3 text-white outline-none focus:border-blue-500"
-          placeholder="Повторите новый пароль"
-        />
+        <div className="relative mb-4">
+          <input
+            type={showConfirmPassword ? 'text' : 'password'}
+            value={confirmPassword}
+            onChange={(event) => setConfirmPassword(event.target.value)}
+            autoComplete="new-password"
+            minLength={8}
+            required
+            className="w-full rounded-lg border border-gray-600 bg-gray-700 p-3 pr-12 text-white outline-none focus:border-blue-500"
+            placeholder="Повторите новый пароль"
+          />
+          <button
+            type="button"
+            onClick={() => setShowConfirmPassword((value) => !value)}
+            aria-label={showConfirmPassword ? 'Скрыть пароль' : 'Показать пароль'}
+            title={showConfirmPassword ? 'Скрыть пароль' : 'Показать пароль'}
+            className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-300 hover:text-white"
+          >
+            <EyeIcon visible={showConfirmPassword} />
+          </button>
+        </div>
 
         {error && (
           <div className="mb-4 rounded-lg bg-red-900/40 p-3 text-sm text-red-300">

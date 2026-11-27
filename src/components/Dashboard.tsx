@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { User } from '../types';
 import { formatMSKTime, formatMSKDate } from '../store';
@@ -23,6 +22,8 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
   const [currentTime, setCurrentTime] = useState(formatMSKTime());
   const [currentDate, setCurrentDate] = useState(formatMSKDate());
   const [unreadMessages, setUnreadMessages] = useState(0);
+  const [activeTaskCount, setActiveTaskCount] = useState(0);
+
   const [darkTheme, setDarkTheme] = useState(() => {
     return localStorage.getItem('synchron-theme') === 'dark';
   });
@@ -53,17 +54,36 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
       setUnreadMessages(count ?? 0);
     };
 
+    const loadActiveTaskCount = async () => {
+      const { count, error } = await supabase
+        .from('tasks')
+        .select('id', { count: 'exact', head: true })
+        .eq('assignee_id', user.id)
+        .eq('completed', false)
+        .or('not_completed.is.null,not_completed.eq.false');
+
+      if (error) {
+        console.error('Ошибка загрузки счётчика активных задач:', error);
+        return;
+      }
+
+      setActiveTaskCount(count ?? 0);
+    };
+
     updateClock();
     void loadUnreadMessages();
+    void loadActiveTaskCount();
 
     const clockTimer = setInterval(updateClock, 1000);
-    const unreadTimer = setInterval(() => {
+
+    const refreshTimer = setInterval(() => {
       void loadUnreadMessages();
+      void loadActiveTaskCount();
     }, 3000);
 
     return () => {
       clearInterval(clockTimer);
-      clearInterval(unreadTimer);
+      clearInterval(refreshTimer);
     };
   }, [user.id]);
 
@@ -102,6 +122,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
         onSectionChange={setActiveSection}
         user={user}
         unreadMessages={unreadMessages}
+        activeTaskCount={activeTaskCount}
       />
 
       <div className={`flex-1 flex flex-col min-h-screen relative z-10 ${getSectionBackground(activeSection)} transition-colors duration-300`}>

@@ -164,48 +164,24 @@ export default function TaskDetailsModal({
     setError('');
     setMessage('');
 
-    const { error: insertError } = await supabase
-      .from('tasks')
-      .insert({
-        title: task.title,
-        description: task.description || null,
-        assignee_id: selectedAssignee,
-        creator_id: user.id,
-        deadline: task.deadline,
-        completed: false,
-        not_completed: false,
-        attachments: [],
-      });
-
-    if (insertError) {
-      setError('Не удалось создать задачу для нового исполнителя: ' + insertError.message);
-      setDelegating(false);
-      return;
-    }
-
     const { error: updateError } = await supabase
       .from('tasks')
       .update({
+        assignee_id: selectedAssignee,
         completed: false,
         completed_at: null,
-        not_completed: true,
+        not_completed: false,
       })
       .eq('id', task.id);
 
     if (updateError) {
-      setError(
-        'Новая задача создана, но исходную не удалось обновить: ' +
-        updateError.message
-      );
+      setError('Не удалось передать задачу: ' + updateError.message);
       setDelegating(false);
-      await onRefresh();
       return;
     }
 
-    setMessage('Задача передана новому исполнителю. Для него создана отдельная задача.');
-    setSelectedAssignee('');
-    setDelegating(false);
     await onRefresh();
+    onClose();
   };
 
   const handleDelegationSubmit = (e: FormEvent) => {
@@ -320,8 +296,8 @@ export default function TaskDetailsModal({
               </h3>
 
               <p className="text-xs text-gray-600 mb-3">
-                Будет создана отдельная задача для нового исполнителя,
-                а исходная задача получит статус «Не выполнена».
+                Задача будет передана новому исполнителю. Она исчезнет из ваших
+                активных задач и появится в его списке. Комментарии и история сохранятся.
               </p>
 
               <form onSubmit={handleDelegationSubmit} className="flex flex-col sm:flex-row gap-2">

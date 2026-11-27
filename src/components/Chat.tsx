@@ -378,15 +378,32 @@ export default function Chat({ user }: ChatProps) {
       recordingStreamRef.current = stream;
       recordingChunksRef.current = [];
 
-      const mimeTypes = [
-        'audio/webm;codecs=opus',
-        'audio/mp4',
-        'audio/ogg;codecs=opus',
-      ];
+     const isIOS =
+  /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
-      const supportedType = mimeTypes.find(type =>
-        MediaRecorder.isTypeSupported(type)
-      );
+const mimeTypes = isIOS
+  ? [
+      'audio/mp4',
+      'audio/webm;codecs=opus',
+      'audio/ogg;codecs=opus',
+    ]
+  : [
+      'audio/webm;codecs=opus',
+      'audio/mp4',
+      'audio/ogg;codecs=opus',
+    ];
+
+     const supportedType = mimeTypes.find(type =>
+  MediaRecorder.isTypeSupported(type)
+);
+
+if (isIOS && supportedType !== 'audio/mp4') {
+  alert('Ваш браузер не поддерживает запись в MP4/AAC. Запись отменена, чтобы избежать несовместимого формата.');
+  stream.getTracks().forEach(track => track.stop());
+  recordingStreamRef.current = null;
+  return;
+}
 
       const recorder = supportedType
         ? new MediaRecorder(stream, { mimeType: supportedType })

@@ -1,3 +1,4 @@
+
 import { useState, useEffect, type FormEvent } from 'react';
 import { User, Document, DocumentCategory } from '../types';
 import { formatMSKDateTime, findUserById } from '../store';
@@ -47,6 +48,7 @@ function mapCloudDocument(doc: CloudDocument): Document {
     fileName: doc.file_name,
     fileSize: doc.file_size ?? undefined,
     fileType: doc.file_type ?? undefined,
+    storagePath: doc.file_path ?? undefined,
     fileData: undefined,
   };
 }
@@ -130,10 +132,14 @@ export default function Documents({ user }: DocumentsProps) {
     const cloudDoc = allDocuments.find((item) => item.id === doc.id);
 
     if (cloudDoc) {
+      const storagePath =
+        cloudDoc.storagePath ||
+        `${doc.uploadedBy}/${doc.id}-${doc.fileName}`;
+
       const { error: storageError } = await supabase
         .storage
         .from(BUCKET)
-        .remove([`${doc.uploadedBy}/${doc.id}-${doc.fileName}`]);
+        .remove([storagePath]);
 
       if (storageError) {
         console.error('Ошибка удаления файла из Storage:', storageError);
@@ -304,8 +310,6 @@ function CloudFileActions({ document: doc }: { document: Document }) {
   const [previewType, setPreviewType] = useState('');
   const [previewName, setPreviewName] = useState('');
 
-  // Освобождаем временный URL при закрытии окна
-  // или при открытии другого файла.
   useEffect(() => {
     return () => {
       if (previewUrl) {
@@ -315,7 +319,8 @@ function CloudFileActions({ document: doc }: { document: Document }) {
   }, [previewUrl]);
 
   const getFileBlob = async (): Promise<Blob | null> => {
-    const path = `${doc.uploadedBy}/${doc.id}-${doc.fileName}`;
+    const path =
+      doc.storagePath || `${doc.uploadedBy}/${doc.id}-${doc.fileName}`;
 
     const { data, error } = await supabase
       .storage
@@ -605,8 +610,11 @@ function UploadDocModal({
     try {
       const documentId = crypto.randomUUID();
 
-      const safeFileName = selectedFile.name.replace(/[\\/]/g, '_');
-      uploadedPath = `${user.id}/${documentId}-${safeFileName}`;
+      const extension =
+        selectedFile.name.match(/\.([a-zA-Z0-9]+)$/)?.[1]?.toLowerCase() ||
+        'bin';
+
+      uploadedPath = `${user.id}/${documentId}.${extension}`;
 
       const { error: uploadError } = await supabase
         .storage

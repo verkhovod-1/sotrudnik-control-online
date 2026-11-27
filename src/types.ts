@@ -41,6 +41,7 @@ export interface Document {
   fileSize?: number;
   fileData?: string; // Base64 данные файла
   fileType?: string; // MIME тип
+  storagePath?: string;
 }
 
 export type DocumentCategory =

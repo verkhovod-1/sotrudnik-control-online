@@ -1,0 +1,20 @@
+{
+  "id": "/sotrudnik-control-online/",
+  "name": "Синхрон — Управление задачами",
+  "short_name": "Синхрон",
+  "description": "Управление задачами, сотрудниками и рабочим общением",
+  "start_url": "/sotrudnik-control-online/",
+  "scope": "/sotrudnik-control-online/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#111827",
+  "theme_color": "#111827",
+  "icons": [
+    {
+      "src": "/sotrudnik-control-online/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

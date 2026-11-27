@@ -15,6 +15,7 @@ interface SidebarProps {
   onSectionChange: (section: Section) => void;
   user: User;
   unreadMessages: number;
+  activeTaskCount: number;
 }
 
 type IconName =
@@ -116,6 +117,7 @@ export default function Sidebar({
   onSectionChange,
   user,
   unreadMessages,
+  activeTaskCount,
 }: SidebarProps) {
   const menuItems: {
     id: Section;
@@ -169,6 +171,12 @@ export default function Sidebar({
               <span className="text-sm font-medium flex-1 text-left">
                 {item.label}
               </span>
+
+              {item.id === 'tasks' && activeTaskCount > 0 && (
+                <span className="bg-gradient-to-r from-red-500 to-pink-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                  {activeTaskCount > 9 ? '9+' : activeTaskCount}
+                </span>
+              )}
 
               {item.id === 'chat' && unreadMessages > 0 && (
                 <span className="bg-gradient-to-r from-red-500 to-pink-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">

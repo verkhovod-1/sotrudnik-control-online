@@ -711,11 +711,11 @@ export default function Chat({ user }: ChatProps) {
                       setSelectedUser(contact.id);
                       setMessageSearch('');
                     }}
-                    className={`w-full flex items-center gap-3 px-4 py-3 text-left transition ${
-                      selectedUser === contact.id
-                        ? 'bg-gradient-to-r from-indigo-50 to-purple-50 border-l-2 border-indigo-500'
-                        : 'hover:bg-gray-50'
-                    }`}
+                   className={`chat-contact-row w-full flex items-center gap-3 px-4 py-3 text-left transition ${
+  selectedUser === contact.id
+    ? 'chat-contact-selected bg-gradient-to-r from-indigo-50 to-purple-50 border-l-2 border-indigo-500'
+    : 'chat-contact-unselected hover:bg-gray-50'
+}`}
                   >
                     <div className="w-10 h-10 rounded-full bg-gradient-to-r from-indigo-400 to-purple-500 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
                       {contact.full_name?.charAt(0) || '?'}

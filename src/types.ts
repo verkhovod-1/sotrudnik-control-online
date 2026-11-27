@@ -22,6 +22,7 @@ export interface Task {
   createdAt: string;
   deadline: string;
   completed: boolean;
+notCompleted?: boolean;
   completedAt?: string;
   attachments?: Array<{
     name: string;

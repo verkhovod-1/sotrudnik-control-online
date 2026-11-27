@@ -1,7 +1,8 @@
 
 import { useState, useEffect } from 'react';
 import { User } from '../types';
-import { formatMSKTime, formatMSKDate, getUnreadCount } from '../store';
+import { formatMSKTime, formatMSKDate } from '../store';
+import { supabase } from '../lib/supabase';
 import Sidebar from './Sidebar';
 import Tasks from './Tasks';
 import AllTasks from './AllTasks';
@@ -30,13 +31,40 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     document.documentElement.dataset.theme = darkTheme ? 'dark' : 'light';
     localStorage.setItem('synchron-theme', darkTheme ? 'dark' : 'light');
   }, [darkTheme]);
+
   useEffect(() => {
-    const timer = setInterval(() => {
+    const updateClock = () => {
       setCurrentTime(formatMSKTime());
       setCurrentDate(formatMSKDate());
-      setUnreadMessages(getUnreadCount(user.id));
-    }, 1000);
-    return () => clearInterval(timer);
+    };
+
+    const loadUnreadMessages = async () => {
+      const { count, error } = await supabase
+        .from('chat_messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('receiver_id', user.id)
+        .eq('read', false);
+
+      if (error) {
+        console.error('Ошибка загрузки общего счётчика сообщений:', error);
+        return;
+      }
+
+      setUnreadMessages(count ?? 0);
+    };
+
+    updateClock();
+    void loadUnreadMessages();
+
+    const clockTimer = setInterval(updateClock, 1000);
+    const unreadTimer = setInterval(() => {
+      void loadUnreadMessages();
+    }, 3000);
+
+    return () => {
+      clearInterval(clockTimer);
+      clearInterval(unreadTimer);
+    };
   }, [user.id]);
 
   const getRoleLabel = (role: string) => {
@@ -91,22 +119,23 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
           </div>
 
           <div className="flex items-center gap-4">
-<button
-  onClick={() => setDarkTheme(!darkTheme)}
-  className="p-2 rounded-lg text-gray-600 hover:text-indigo-600 hover:bg-gray-100 transition"
-  title={darkTheme ? 'Включить светлую тему' : 'Включить тёмную тему'}
->
-  {darkTheme ? (
-    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <circle cx="12" cy="12" r="4" strokeWidth="2" />
-      <path strokeLinecap="round" strokeWidth="2" d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42" />
-    </svg>
-  ) : (
-    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20.354 15.354A9 9 0 018.646 3.646 9 9 0 10120.354 15.354z" />
-    </svg>
-  )}
-</button>
+            <button
+              onClick={() => setDarkTheme(!darkTheme)}
+              className="p-2 rounded-lg text-gray-600 hover:text-indigo-600 hover:bg-gray-100 transition"
+              title={darkTheme ? 'Включить светлую тему' : 'Включить тёмную тему'}
+            >
+              {darkTheme ? (
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <circle cx="12" cy="12" r="4" strokeWidth="2" />
+                  <path strokeLinecap="round" strokeWidth="2" d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42" />
+                </svg>
+              ) : (
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20.5 14.5A8.5 8.5 0 019.5 3.5a8.5 8.5 0 1011 11z" />
+                </svg>
+              )}
+            </button>
+
             <div className="hidden sm:flex items-center gap-2">
               <div className="text-right">
                 <p className="text-gray-800 text-sm font-medium">{user.name.split(' ').slice(0, 2).join(' ')}</p>
@@ -115,6 +144,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                 </span>
               </div>
             </div>
+
             <button
               onClick={onLogout}
               className="p-2 text-gray-600 hover:text-red-500 transition"

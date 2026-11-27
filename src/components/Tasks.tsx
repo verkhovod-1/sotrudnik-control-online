@@ -13,12 +13,12 @@ interface TasksProps {
 interface ProfileInfo {
   id: string;
   full_name: string | null;
-  email: string | null;
 }
 
 export default function Tasks({ user }: TasksProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [profiles, setProfiles] = useState<Record<string, string>>({});
+  const [assignees, setAssignees] = useState<ProfileInfo[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -57,17 +57,27 @@ export default function Tasks({ user }: TasksProps) {
 
     setTasks(mappedTasks);
 
-    // Загружаем имена сотрудников, доступных текущему пользователю по RLS.
-    const { data: profileData } = await supabase
-      .from('profiles')
-      .select('id, full_name, email');
+    // Получаем список активных участников через безопасную функцию Supabase.
+    const { data: profileData, error: profileError } = await supabase
+      .rpc('get_task_assignees');
+
+    if (profileError) {
+      setError('Не удалось загрузить список сотрудников: ' + profileError.message);
+      setLoading(false);
+      return;
+    }
+
+    const availableProfiles = (profileData || []) as ProfileInfo[];
+    setAssignees(availableProfiles);
 
     const profileMap: Record<string, string> = {};
 
-    (profileData as ProfileInfo[] | null || []).forEach((profile) => {
+    availableProfiles.forEach((profile) => {
       profileMap[profile.id] =
-        profile.full_name?.trim() || profile.email || 'Сотрудник';
+        profile.full_name?.trim() || 'Сотрудник';
     });
+
+    profileMap[user.id] = user.name || 'Вы';
 
     setProfiles(profileMap);
     setLoading(false);
@@ -108,18 +118,28 @@ export default function Tasks({ user }: TasksProps) {
 
       setTasks(mappedTasks);
 
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('id, full_name, email');
+      const { data: profileData, error: profileError } = await supabase
+        .rpc('get_task_assignees');
 
       if (!active) return;
 
+      if (profileError) {
+        setError('Не удалось загрузить список сотрудников: ' + profileError.message);
+        setLoading(false);
+        return;
+      }
+
+      const availableProfiles = (profileData || []) as ProfileInfo[];
+      setAssignees(availableProfiles);
+
       const profileMap: Record<string, string> = {};
 
-      (profileData as ProfileInfo[] | null || []).forEach((profile) => {
+      availableProfiles.forEach((profile) => {
         profileMap[profile.id] =
-          profile.full_name?.trim() || profile.email || 'Сотрудник';
+          profile.full_name?.trim() || 'Сотрудник';
       });
+
+      profileMap[user.id] = user.name || 'Вы';
 
       setProfiles(profileMap);
       setLoading(false);
@@ -130,7 +150,7 @@ export default function Tasks({ user }: TasksProps) {
     return () => {
       active = false;
     };
-  }, [user.id]);
+  }, [user.id, user.name]);
 
   const handleComplete = async (taskId: string) => {
     setError('');
@@ -187,6 +207,8 @@ export default function Tasks({ user }: TasksProps) {
   };
 
   const handleDelete = async (taskId: string) => {
+    if (!isManager) return;
+
     setError('');
 
     const { error: deleteError } = await supabase
@@ -205,7 +227,8 @@ export default function Tasks({ user }: TasksProps) {
   const handleCreate = async (
     title: string,
     description: string,
-    deadline: string
+    deadline: string,
+    assigneeId: string
   ) => {
     setError('');
 
@@ -214,7 +237,7 @@ export default function Tasks({ user }: TasksProps) {
       .insert({
         title: title.trim(),
         description: description.trim() || null,
-        assignee_id: user.id,
+        assignee_id: assigneeId,
         creator_id: user.id,
         deadline: new Date(deadline).toISOString(),
         completed: false,
@@ -236,16 +259,27 @@ export default function Tasks({ user }: TasksProps) {
 
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
+
       const creator =
         task.creatorId === user.id
           ? user.name || user.email
           : profiles[task.creatorId] || 'Сотрудник';
 
+      const assignee =
+        profiles[task.assigneeId] ||
+        (task.assigneeId === user.id ? 'Вы' : 'Сотрудник');
+
       const matchesTitle = task.title.toLowerCase().includes(query);
       const matchesDescription = task.description?.toLowerCase().includes(query);
       const matchesCreator = creator.toLowerCase().includes(query);
+      const matchesAssignee = assignee.toLowerCase().includes(query);
 
-      return matchesTitle || matchesDescription || matchesCreator;
+      return (
+        matchesTitle ||
+        matchesDescription ||
+        matchesCreator ||
+        matchesAssignee
+      );
     }
 
     return true;
@@ -326,8 +360,12 @@ export default function Tasks({ user }: TasksProps) {
                 ? user.name || user.email
                 : profiles[task.creatorId] || 'Сотрудник';
 
+            const assignee =
+              profiles[task.assigneeId] ||
+              (task.assigneeId === user.id ? 'Вы' : 'Сотрудник');
+
             const canChangeStatus = isManager || task.assigneeId === user.id;
-            const canDelete = isManager || task.creatorId === user.id;
+            const canDelete = isManager;
 
             return (
               <div
@@ -387,6 +425,10 @@ export default function Tasks({ user }: TasksProps) {
                     )}
 
                     <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs">
+                      <span className="text-purple-600">
+                        Исполнитель: {assignee}
+                      </span>
+
                       <span className="text-gray-500">
                         Создана: {formatMSKDateTime(task.createdAt)}
                       </span>
@@ -435,6 +477,8 @@ export default function Tasks({ user }: TasksProps) {
         <CreateTaskModal
           onClose={() => setShowCreateModal(false)}
           onCreate={handleCreate}
+          assignees={assignees}
+          currentUserId={user.id}
         />
       )}
     </div>
@@ -444,22 +488,32 @@ export default function Tasks({ user }: TasksProps) {
 function CreateTaskModal({
   onClose,
   onCreate,
+  assignees,
+  currentUserId,
 }: {
   onClose: () => void;
-  onCreate: (title: string, description: string, deadline: string) => Promise<void>;
+  onCreate: (
+    title: string,
+    description: string,
+    deadline: string,
+    assigneeId: string
+  ) => Promise<void>;
+  assignees: ProfileInfo[];
+  currentUserId: string;
 }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [deadline, setDeadline] = useState('');
+  const [assigneeId, setAssigneeId] = useState(currentUserId);
   const [saving, setSaving] = useState(false);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
 
-    if (!title.trim() || !deadline || saving) return;
+    if (!title.trim() || !deadline || !assigneeId || saving) return;
 
     setSaving(true);
-    await onCreate(title, description, deadline);
+    await onCreate(title, description, deadline, assigneeId);
     setSaving(false);
   };
 
@@ -491,6 +545,23 @@ function CreateTaskModal({
           </div>
 
           <div>
+            <label className="block text-sm text-gray-700 mb-1">Кому назначить</label>
+            <select
+              value={assigneeId}
+              onChange={(e) => setAssigneeId(e.target.value)}
+              className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              required
+            >
+              {assignees.map((person) => (
+                <option key={person.id} value={person.id}>
+                  {person.full_name?.trim() || 'Сотрудник'}
+                  {person.id === currentUserId ? ' (Вы)' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
             <label className="block text-sm text-gray-700 mb-1">Срок исполнения</label>
             <input
               type="datetime-local"
@@ -513,7 +584,7 @@ function CreateTaskModal({
 
             <button
               type="submit"
-              disabled={saving}
+              disabled={saving || assignees.length === 0}
               className="flex-1 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-lg hover:from-indigo-600 hover:to-purple-700 transition font-medium shadow-md disabled:opacity-50"
             >
               {saving ? 'Сохраняем...' : 'Создать'}

@@ -40,12 +40,11 @@ interface ChatMessage {
 }
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024;
-// Проверка, является ли вложение аудиофайлом
+
 function isAudioFile(filename: string): boolean {
-  return /\.(mp3|wav|m4a|aac|ogg|flac|opus|amr|3gp)$/i.test(filename);
+  return /\.(mp3|wav|m4a|aac|ogg|flac|opus|amr|3gp|webm)$/i.test(filename);
 }
 
-// Встроенный аудиоплеер
 function AudioAttachment({ file }: { file: ChatAttachment }) {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [audioError, setAudioError] = useState(false);
@@ -102,6 +101,7 @@ function AudioAttachment({ file }: { file: ChatAttachment }) {
     </audio>
   );
 }
+
 export default function Chat({ user }: ChatProps) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [selectedUser, setSelectedUser] = useState<string | null>(null);
@@ -110,19 +110,22 @@ export default function Chat({ user }: ChatProps) {
   const [contactSearch, setContactSearch] = useState('');
   const [messageSearch, setMessageSearch] = useState('');
   const [attachment, setAttachment] = useState<File | null>(null);
+  const [attachmentPreviewUrl, setAttachmentPreviewUrl] = useState<string | null>(null);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingStreamRef = useRef<MediaStream | null>(null);
+  const recordingChunksRef = useRef<Blob[]>([]);
+  const recordingStartRef = useRef<number>(0);
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Контейнер переписки
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-
-  // Разрешение на автоматическую прокрутку
   const shouldAutoScrollRef = useRef(true);
-
-  // ID последнего обработанного сообщения
   const previousLastMessageIdRef = useRef<string | null>(null);
 
   const selectedContact = contacts.find(
@@ -150,6 +153,32 @@ export default function Chat({ user }: ChatProps) {
       message.attachment?.name.toLowerCase().includes(query)
     );
   });
+
+  // Предварительное прослушивание аудиозаписи
+  useEffect(() => {
+    if (!attachment || !isAudioFile(attachment.name)) {
+      setAttachmentPreviewUrl(null);
+      return;
+    }
+
+    const url = URL.createObjectURL(attachment);
+    setAttachmentPreviewUrl(url);
+
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+  }, [attachment]);
+
+  // Очистка микрофона и таймера при закрытии компонента
+  useEffect(() => {
+    return () => {
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+      }
+
+      recordingStreamRef.current?.getTracks().forEach(track => track.stop());
+    };
+  }, []);
 
   // Загрузка списка сотрудников
   const loadContacts = useCallback(async () => {
@@ -252,12 +281,12 @@ export default function Chat({ user }: ChatProps) {
 
     refresh();
 
-   const interval = window.setInterval(async () => {
-  if (!cancelled) {
-    await loadMessages();
-    await markAsRead();
-  }
-}, 3000);
+    const interval = window.setInterval(async () => {
+      if (!cancelled) {
+        await loadMessages();
+        await markAsRead();
+      }
+    }, 3000);
 
     return () => {
       cancelled = true;
@@ -277,7 +306,6 @@ export default function Chat({ user }: ChatProps) {
     const lastMessage = messages[messages.length - 1];
     const previousId = previousLastMessageIdRef.current;
 
-    // Первоначальная загрузка переписки
     if (previousId === null) {
       previousLastMessageIdRef.current = lastMessage.id;
 
@@ -294,16 +322,12 @@ export default function Chat({ user }: ChatProps) {
       return;
     }
 
-    // Если последнее сообщение не изменилось,
-    // ничего не прокручиваем
     if (previousId === lastMessage.id) {
       return;
     }
 
     previousLastMessageIdRef.current = lastMessage.id;
 
-    // Новое сообщение прокручивает чат вниз
-    // только если пользователь уже находился внизу
     if (shouldAutoScrollRef.current) {
       requestAnimationFrame(() => {
         const container = messagesContainerRef.current;
@@ -337,6 +361,135 @@ export default function Chat({ user }: ChatProps) {
     e.target.value = '';
   };
 
+  // Начало записи голоса
+  const startRecording = async () => {
+    try {
+      if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+        alert('Запись голоса не поддерживается этим браузером.');
+        return;
+      }
+
+      if (attachment) {
+        alert('Сначала отправьте или удалите текущее вложение.');
+        return;
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recordingStreamRef.current = stream;
+      recordingChunksRef.current = [];
+
+      const mimeTypes = [
+        'audio/webm;codecs=opus',
+        'audio/mp4',
+        'audio/ogg;codecs=opus',
+      ];
+
+      const supportedType = mimeTypes.find(type =>
+        MediaRecorder.isTypeSupported(type)
+      );
+
+      const recorder = supportedType
+        ? new MediaRecorder(stream, { mimeType: supportedType })
+        : new MediaRecorder(stream);
+
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = event => {
+        if (event.data.size > 0) {
+          recordingChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onerror = () => {
+        if (recordingTimerRef.current) {
+          clearInterval(recordingTimerRef.current);
+          recordingTimerRef.current = null;
+        }
+
+        recordingStreamRef.current?.getTracks().forEach(track => track.stop());
+        recordingStreamRef.current = null;
+        mediaRecorderRef.current = null;
+        setIsRecording(false);
+        alert('Произошла ошибка во время записи.');
+      };
+
+      recorder.onstop = () => {
+        const mimeType = recorder.mimeType || 'audio/webm';
+
+        const extension = mimeType.includes('mp4')
+          ? 'm4a'
+          : mimeType.includes('ogg')
+            ? 'ogg'
+            : 'webm';
+
+        const audioBlob = new Blob(recordingChunksRef.current, {
+          type: mimeType,
+        });
+
+        if (audioBlob.size > MAX_FILE_SIZE) {
+          alert('Запись слишком большая. Максимальный размер — 25 МБ.');
+        } else if (audioBlob.size > 0) {
+          const audioFile = new File(
+            [audioBlob],
+            `voice-${Date.now()}.${extension}`,
+            { type: mimeType }
+          );
+
+          setAttachment(audioFile);
+        } else {
+          alert('Запись получилась пустой. Попробуйте ещё раз.');
+        }
+
+        setIsRecording(false);
+
+        if (recordingTimerRef.current) {
+          clearInterval(recordingTimerRef.current);
+          recordingTimerRef.current = null;
+        }
+
+        setRecordingTime(0);
+
+        recordingStreamRef.current?.getTracks().forEach(track => track.stop());
+        recordingStreamRef.current = null;
+        mediaRecorderRef.current = null;
+      };
+
+      recorder.start();
+      recordingStartRef.current = Date.now();
+      setRecordingTime(0);
+      setIsRecording(true);
+
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingTime(
+          Math.floor((Date.now() - recordingStartRef.current) / 1000)
+        );
+      }, 1000);
+    } catch (error) {
+      console.error('Ошибка записи голоса:', error);
+
+      recordingStreamRef.current?.getTracks().forEach(track => track.stop());
+      recordingStreamRef.current = null;
+
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+
+      setIsRecording(false);
+      alert('Не удалось включить микрофон. Проверьте разрешение на его использование.');
+    }
+  };
+
+  // Остановка записи
+  const stopRecording = () => {
+    if (
+      mediaRecorderRef.current &&
+      mediaRecorderRef.current.state === 'recording'
+    ) {
+      mediaRecorderRef.current.stop();
+    }
+  };
+
   // Отправка сообщения
   const handleSend = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -345,7 +498,7 @@ export default function Chat({ user }: ChatProps) {
       return;
     }
 
-    if (sending) return;
+    if (sending || isRecording) return;
 
     setSending(true);
 
@@ -354,12 +507,11 @@ export default function Chat({ user }: ChatProps) {
     try {
       let attachmentData: ChatAttachment | null = null;
 
-      // Если есть вложение, сначала загружаем его в Storage
       if (attachment) {
         const safeName = attachment.name
-  .normalize('NFKD')
-  .replace(/[^a-zA-Z0-9._-]/g, '_')
-  .replace(/_+/g, '_');
+          .normalize('NFKD')
+          .replace(/[^a-zA-Z0-9._-]/g, '_')
+          .replace(/_+/g, '_');
 
         const filePath =
           `${user.id}/${crypto.randomUUID()}-${safeName}`;
@@ -386,7 +538,6 @@ export default function Chat({ user }: ChatProps) {
         };
       }
 
-      // Сохраняем сообщение в базе
       const { error: insertError } = await supabase
         .from('chat_messages')
         .insert({
@@ -404,7 +555,6 @@ export default function Chat({ user }: ChatProps) {
       setMessageText('');
       setAttachment(null);
 
-      // После отправки разрешаем прокрутку вниз
       shouldAutoScrollRef.current = true;
 
       await loadMessages();
@@ -412,8 +562,6 @@ export default function Chat({ user }: ChatProps) {
     } catch (error) {
       console.error('Ошибка отправки сообщения:', error);
 
-      // Если файл загрузился, а сообщение не сохранилось,
-      // удаляем оставшийся файл
       if (uploadedPath) {
         const { error: removeError } = await supabase.storage
           .from('synchron-chat')
@@ -434,6 +582,7 @@ export default function Chat({ user }: ChatProps) {
       setSending(false);
     }
   };
+
   // Удаление собственного сообщения
   const handleDeleteMessage = async (msg: ChatMessage) => {
     const confirmed = window.confirm(
@@ -453,7 +602,6 @@ export default function Chat({ user }: ChatProps) {
         throw error;
       }
 
-      // Удаляем вложение из хранилища, если оно есть
       if (msg.attachment?.file_path) {
         const { error: storageError } = await supabase.storage
           .from('synchron-chat')
@@ -476,6 +624,7 @@ export default function Chat({ user }: ChatProps) {
       );
     }
   };
+
   // Скачивание вложения
   const handleDownload = async (file: ChatAttachment) => {
     try {
@@ -550,19 +699,18 @@ export default function Chat({ user }: ChatProps) {
                 return (
                   <button
                     key={contact.id}
-                   onClick={() => {
-  shouldAutoScrollRef.current = true;
-  previousLastMessageIdRef.current = null;
+                    onClick={() => {
+                      shouldAutoScrollRef.current = true;
+                      previousLastMessageIdRef.current = null;
 
-  // Сразу обнуляем счётчик выбранного сотрудника
-  setUnreadCounts((prev) => ({
-    ...prev,
-    [contact.id]: 0,
-  }));
+                      setUnreadCounts((prev) => ({
+                        ...prev,
+                        [contact.id]: 0,
+                      }));
 
-  setSelectedUser(contact.id);
-  setMessageSearch('');
-}}
+                      setSelectedUser(contact.id);
+                      setMessageSearch('');
+                    }}
                     className={`w-full flex items-center gap-3 px-4 py-3 text-left transition ${
                       selectedUser === contact.id
                         ? 'bg-gradient-to-r from-indigo-50 to-purple-50 border-l-2 border-indigo-500'
@@ -768,13 +916,14 @@ export default function Chat({ user }: ChatProps) {
                                   </svg>
                                 </button>
                               </div>
-{isAudioFile(msg.attachment.name) && (
-  <AudioAttachment file={msg.attachment} />
-)}
+
+                              {isAudioFile(msg.attachment.name) && (
+                                <AudioAttachment file={msg.attachment} />
+                              )}
                             </div>
                           )}
 
-                                                    <div className="flex items-center justify-between gap-3 mt-1">
+                          <div className="flex items-center justify-between gap-3 mt-1">
                             <p
                               className={`text-xs ${
                                 isMe ? 'text-indigo-100' : 'text-gray-500'
@@ -820,40 +969,62 @@ export default function Chat({ user }: ChatProps) {
                 className="p-4 border-t border-gray-200"
               >
                 {attachment && (
-                  <div className="mb-2 p-2 bg-white border border-gray-200 rounded-lg flex items-center gap-2">
-                    <span className="text-lg">
-                      {getFileIcon(attachment.name)}
-                    </span>
+                  <div className="mb-2 p-2 bg-white border border-gray-200 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">
+                        {getFileIcon(attachment.name)}
+                      </span>
 
-                    <div className="flex-1 min-w-0">
-                      <p className="text-gray-800 text-sm truncate">
-                        {attachment.name}
-                      </p>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-gray-800 text-sm truncate">
+                          {attachment.name}
+                        </p>
 
-                      <p className="text-gray-500 text-xs">
-                        {formatFileSize(attachment.size)}
-                      </p>
+                        <p className="text-gray-500 text-xs">
+                          {formatFileSize(attachment.size)}
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setAttachment(null)}
+                        className="text-gray-400 hover:text-red-500 transition"
+                        title="Удалить вложение"
+                      >
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M6 18L18 6M6 6l12 12"
+                          />
+                        </svg>
+                      </button>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => setAttachment(null)}
-                      className="text-gray-400 hover:text-red-500 transition"
-                    >
-                      <svg
-                        className="w-4 h-4"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
+                    {attachmentPreviewUrl && (
+                      <audio
+                        controls
+                        preload="metadata"
+                        src={attachmentPreviewUrl}
+                        className="w-full mt-2"
                       >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M6 18L18 6M6 6l12 12"
-                        />
-                      </svg>
-                    </button>
+                        Ваш браузер не поддерживает воспроизведение аудио.
+                      </audio>
+                    )}
+                  </div>
+                )}
+
+                {isRecording && (
+                  <div className="mb-2 text-red-600 text-sm font-medium">
+                    <span className="animate-pulse">●</span>
+                    {' '}Идёт запись: {Math.floor(recordingTime / 60)}:
+                    {String(recordingTime % 60).padStart(2, '0')}
                   </div>
                 )}
 
@@ -867,8 +1038,9 @@ export default function Chat({ user }: ChatProps) {
 
                   <button
                     type="button"
+                    disabled={isRecording || sending}
                     onClick={() => fileInputRef.current?.click()}
-                    className="p-2 text-gray-600 hover:text-indigo-600 transition rounded-lg hover:bg-gray-50"
+                    className="p-2 text-gray-600 hover:text-indigo-600 transition rounded-lg hover:bg-gray-50 disabled:opacity-40"
                     title="Прикрепить файл"
                   >
                     <svg
@@ -886,18 +1058,50 @@ export default function Chat({ user }: ChatProps) {
                     </svg>
                   </button>
 
+                  <button
+                    type="button"
+                    disabled={sending || (!isRecording && !!attachment)}
+                    onClick={isRecording ? stopRecording : startRecording}
+                    className={`p-2 transition rounded-lg ${
+                      isRecording
+                        ? 'text-red-600 bg-red-50'
+                        : 'text-gray-600 hover:text-indigo-600 hover:bg-gray-50'
+                    } disabled:opacity-40`}
+                    title={
+                      isRecording
+                        ? 'Остановить запись'
+                        : 'Записать голосовое сообщение'
+                    }
+                  >
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 2a3 3 0 00-3 3v6a3 3 0 006 0V5a3 3 0 00-3-3zM19 10v1a7 7 0 01-14 0v-1m7 8v4m-4 0h8"
+                      />
+                    </svg>
+                  </button>
+
                   <input
                     type="text"
                     value={messageText}
                     onChange={(e) => setMessageText(e.target.value)}
                     className="flex-1 min-w-0 px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-400"
                     placeholder="Введите сообщение..."
+                    disabled={isRecording}
                   />
 
                   <button
                     type="submit"
                     disabled={
                       sending ||
+                      isRecording ||
                       (!messageText.trim() && !attachment)
                     }
                     className="px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-lg hover:from-indigo-600 hover:to-purple-700 transition shadow-md disabled:opacity-50"

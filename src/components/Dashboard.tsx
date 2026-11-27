@@ -22,7 +22,14 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
   const [currentTime, setCurrentTime] = useState(formatMSKTime());
   const [currentDate, setCurrentDate] = useState(formatMSKDate());
   const [unreadMessages, setUnreadMessages] = useState(0);
+  const [darkTheme, setDarkTheme] = useState(() => {
+    return localStorage.getItem('synchron-theme') === 'dark';
+  });
 
+  useEffect(() => {
+    document.documentElement.dataset.theme = darkTheme ? 'dark' : 'light';
+    localStorage.setItem('synchron-theme', darkTheme ? 'dark' : 'light');
+  }, [darkTheme]);
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTime(formatMSKTime());
@@ -84,6 +91,22 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
           </div>
 
           <div className="flex items-center gap-4">
+<button
+  onClick={() => setDarkTheme(!darkTheme)}
+  className="p-2 rounded-lg text-gray-600 hover:text-indigo-600 hover:bg-gray-100 transition"
+  title={darkTheme ? 'Включить светлую тему' : 'Включить тёмную тему'}
+>
+  {darkTheme ? (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <circle cx="12" cy="12" r="4" strokeWidth="2" />
+      <path strokeLinecap="round" strokeWidth="2" d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42" />
+    </svg>
+  ) : (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20.354 15.354A9 9 0 018.646 3.646 9 9 0 10120.354 15.354z" />
+    </svg>
+  )}
+</button>
             <div className="hidden sm:flex items-center gap-2">
               <div className="text-right">
                 <p className="text-gray-800 text-sm font-medium">{user.name.split(' ').slice(0, 2).join(' ')}</p>

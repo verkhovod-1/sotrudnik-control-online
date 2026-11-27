@@ -76,3 +76,103 @@ body {
   transform: translateY(-2px);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
 }
+
+/* ===== ТЁМНАЯ ТЕМА СИНХРОН ===== */
+
+:root[data-theme='dark'] body {
+  background: #111827;
+  color: #e5e7eb;
+}
+
+:root[data-theme='dark'] .card-light {
+  background: rgba(31, 41, 55, 0.96);
+  border-color: #374151;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+
+:root[data-theme='dark'] .decorative-bg {
+  background-color: #111827;
+  background-image: none;
+}
+
+/* Основные фоны */
+:root[data-theme='dark'] .bg-white,
+:root[data-theme='dark'] .bg-gray-50,
+:root[data-theme='dark'] .bg-gray-100 {
+  background-color: #1f2937 !important;
+}
+
+/* Текст */
+:root[data-theme='dark'] .text-gray-900,
+:root[data-theme='dark'] .text-gray-800,
+:root[data-theme='dark'] .text-gray-700 {
+  color: #f3f4f6 !important;
+}
+
+:root[data-theme='dark'] .text-gray-600,
+:root[data-theme='dark'] .text-gray-500,
+:root[data-theme='dark'] .text-gray-400 {
+  color: #9ca3af !important;
+}
+
+/* Границы */
+:root[data-theme='dark'] .border-gray-100,
+:root[data-theme='dark'] .border-gray-200,
+:root[data-theme='dark'] .border-gray-300 {
+  border-color: #374151 !important;
+}
+
+/* Поля ввода */
+:root[data-theme='dark'] input,
+:root[data-theme='dark'] textarea,
+:root[data-theme='dark'] select {
+  background-color: #1f2937;
+  color: #f3f4f6;
+  border-color: #4b5563;
+}
+
+:root[data-theme='dark'] input::placeholder,
+:root[data-theme='dark'] textarea::placeholder {
+  color: #9ca3af;
+}
+
+/* Таблицы и разделители */
+:root[data-theme='dark'] table,
+:root[data-theme='dark'] th,
+:root[data-theme='dark'] td {
+  border-color: #374151;
+}
+
+:root[data-theme='dark'] hr {
+  border-color: #374151;
+}
+
+/* Фоны разделов */
+:root[data-theme='dark'] .bg-blue-50,
+:root[data-theme='dark'] .bg-blue-50\/60,
+:root[data-theme='dark'] .bg-purple-50,
+:root[data-theme='dark'] .bg-purple-50\/60,
+:root[data-theme='dark'] .bg-emerald-50,
+:root[data-theme='dark'] .bg-emerald-50\/60,
+:root[data-theme='dark'] .bg-teal-50,
+:root[data-theme='dark'] .bg-teal-50\/60,
+:root[data-theme='dark'] .bg-amber-50,
+:root[data-theme='dark'] .bg-amber-50\/60,
+:root[data-theme='dark'] .bg-orange-50,
+:root[data-theme='dark'] .bg-orange-50\/60 {
+  background-color: #182334 !important;
+}
+
+/* Выпадающие меню */
+:root[data-theme='dark'] [role="menu"],
+:root[data-theme='dark'] [role="listbox"] {
+  background-color: #1f2937;
+  color: #f3f4f6;
+  border-color: #374151;
+}
+
+/* Ссылки */
+:root[data-theme='dark'] a:not([class*="text-"]) {
+  color: #93c5fd;
+}
+

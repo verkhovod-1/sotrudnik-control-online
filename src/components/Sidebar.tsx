@@ -139,11 +139,12 @@ export default function Sidebar({
             <button
               key={item.id}
               onClick={() => onSectionChange(item.id)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${
-                activeSection === item.id
-                  ? 'bg-gradient-to-r from-indigo-50 to-purple-50 text-indigo-700 border border-indigo-200'
-                  : 'text-gray-600 hover:bg-gray-200 hover:text-gray-800'
-              }`}
+              item.id)}
+className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-300 ${
+  activeSection === item.id
+    ? 'bg-gradient-to-r from-indigo-100 via-blue-50 to-purple-100 text-indigo-800 border border-indigo-300 shadow-[0_0_14px_rgba(99,102,241,0.22)] scale-[1.02]'
+    : 'text-gray-600 hover:bg-gray-200/80 hover:shadow-sm hover:translate-x-0.5'
+}`}
             >
               <MenuIcon name={item.icon} />
               <span className="text-sm font-medium flex-1 text-left">

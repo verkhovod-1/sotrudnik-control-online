@@ -4,6 +4,7 @@ import type { User, Task } from '../types';
 import { supabase } from '../lib/supabase';
 import { formatMSKDateTime } from '../store';
 import SearchBar from './SearchBar';
+import TaskDetailsModal from './TaskDetailsModal';
 
 interface AllTasksProps {
   user: User;
@@ -18,10 +19,11 @@ interface ProfileInfo {
 export default function AllTasks({ user }: AllTasksProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [profiles, setProfiles] = useState<Record<string, string>>({});
-  const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('all');
+  const [filter, setFilter] = useState<'all' | 'active' | 'completed' | 'notCompleted'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
   const isManager = user.role === 'director' || user.role === 'admin';
 
@@ -49,11 +51,17 @@ export default function AllTasks({ user }: AllTasksProps) {
       createdAt: item.created_at,
       deadline: item.deadline,
       completed: item.completed,
+      notCompleted: item.not_completed ?? false,
       completedAt: item.completed_at || undefined,
       attachments: item.attachments || [],
     }));
 
     setTasks(mappedTasks);
+
+    setSelectedTask((current) => {
+      if (!current) return null;
+      return mappedTasks.find((task) => task.id === current.id) || null;
+    });
 
     const { data: profileData } = await supabase
       .from('profiles')
@@ -101,6 +109,7 @@ export default function AllTasks({ user }: AllTasksProps) {
         createdAt: item.created_at,
         deadline: item.deadline,
         completed: item.completed,
+        notCompleted: item.not_completed ?? false,
         completedAt: item.completed_at || undefined,
         attachments: item.attachments || [],
       }));
@@ -141,6 +150,7 @@ export default function AllTasks({ user }: AllTasksProps) {
       .update({
         completed: true,
         completed_at: new Date().toISOString(),
+        not_completed: false,
       })
       .eq('id', taskId)
       .select()
@@ -157,6 +167,7 @@ export default function AllTasks({ user }: AllTasksProps) {
           ? {
               ...task,
               completed: data.completed,
+              notCompleted: false,
               completedAt: data.completed_at || undefined,
             }
           : task
@@ -172,6 +183,7 @@ export default function AllTasks({ user }: AllTasksProps) {
       .update({
         completed: false,
         completed_at: null,
+        not_completed: false,
       })
       .eq('id', taskId)
       .select()
@@ -188,6 +200,7 @@ export default function AllTasks({ user }: AllTasksProps) {
           ? {
               ...task,
               completed: data.completed,
+              notCompleted: false,
               completedAt: undefined,
             }
           : task
@@ -213,11 +226,16 @@ export default function AllTasks({ user }: AllTasksProps) {
     }
 
     setTasks((previous) => previous.filter((task) => task.id !== taskId));
+
+    if (selectedTask?.id === taskId) {
+      setSelectedTask(null);
+    }
   };
 
   const filteredTasks = tasks.filter((task) => {
-    if (filter === 'active' && task.completed) return false;
+    if (filter === 'active' && (task.completed || task.notCompleted)) return false;
     if (filter === 'completed' && !task.completed) return false;
+    if (filter === 'notCompleted' && !task.notCompleted) return false;
 
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
@@ -247,7 +265,7 @@ export default function AllTasks({ user }: AllTasksProps) {
   });
 
   const isOverdue = (task: Task) => {
-    if (task.completed) return false;
+    if (task.completed || task.notCompleted) return false;
     return new Date(task.deadline) < new Date();
   };
 
@@ -257,7 +275,7 @@ export default function AllTasks({ user }: AllTasksProps) {
         <div>
           <h3 className="text-xl font-bold text-gray-800">Все задачи</h3>
           <p className="text-gray-600 text-sm">
-            Всего: {tasks.length} | Активных: {tasks.filter((t) => !t.completed).length} | Выполнено: {tasks.filter((t) => t.completed).length}
+            Всего: {tasks.length} | Активных: {tasks.filter((t) => !t.completed && !t.notCompleted).length} | Выполнено: {tasks.filter((t) => t.completed).length} | Не выполнено: {tasks.filter((t) => t.notCompleted).length}
           </p>
         </div>
       </div>
@@ -276,8 +294,8 @@ export default function AllTasks({ user }: AllTasksProps) {
         />
       </div>
 
-      <div className="flex gap-2 mb-4">
-        {(['all', 'active', 'completed'] as const).map((f) => (
+      <div className="flex gap-2 mb-4 flex-wrap">
+        {(['all', 'active', 'completed', 'notCompleted'] as const).map((f) => (
           <button
             key={f}
             onClick={() => setFilter(f)}
@@ -287,12 +305,18 @@ export default function AllTasks({ user }: AllTasksProps) {
                 : 'text-gray-600 hover:bg-white/50 hover:text-gray-800'
             }`}
           >
-            {f === 'all' ? 'Все' : f === 'active' ? 'Активные' : 'Выполненные'}
+            {f === 'all'
+              ? 'Все'
+              : f === 'active'
+              ? 'Активные'
+              : f === 'completed'
+              ? 'Выполненные'
+              : 'Не выполненные'}
           </button>
         ))}
       </div>
 
-      <div className="space-y-3">
+      <div className="max-h-[65vh] min-h-[220px] overflow-y-auto overscroll-contain pr-2 space-y-3">
         {loading ? (
           <div className="text-center py-12 card-light rounded-xl text-gray-500">
             Загружаем задачи...
@@ -320,9 +344,20 @@ export default function AllTasks({ user }: AllTasksProps) {
             return (
               <div
                 key={task.id}
-                className={`card-light rounded-xl p-4 transition hover-lift ${
+                role="button"
+                tabIndex={0}
+                onClick={() => setSelectedTask(task)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setSelectedTask(task);
+                  }
+                }}
+                className={`card-light rounded-xl p-4 transition hover-lift cursor-pointer ${
                   task.completed
                     ? 'border-green-200'
+                    : task.notCompleted
+                    ? 'border-red-300'
                     : isOverdue(task)
                     ? 'border-red-200'
                     : 'border-gray-200'
@@ -331,17 +366,27 @@ export default function AllTasks({ user }: AllTasksProps) {
                 <div className="flex items-start gap-3">
                   {canChangeStatus ? (
                     <button
-                      onClick={() =>
-                        task.completed
-                          ? handleUncomplete(task.id)
-                          : handleComplete(task.id)
-                      }
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (task.completed || task.notCompleted) {
+                          handleUncomplete(task.id);
+                        } else {
+                          handleComplete(task.id);
+                        }
+                      }}
                       className={`mt-1 w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition ${
                         task.completed
                           ? 'bg-green-500 border-green-500'
+                          : task.notCompleted
+                          ? 'bg-red-500 border-red-500'
                           : 'border-gray-400 hover:border-indigo-500'
                       }`}
-                      title={task.completed ? 'Вернуть в работу' : 'Выполнить'}
+                      title={
+                        task.completed || task.notCompleted
+                          ? 'Вернуть в работу'
+                          : 'Выполнить'
+                      }
                     >
                       {task.completed && (
                         <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -354,6 +399,8 @@ export default function AllTasks({ user }: AllTasksProps) {
                       className={`mt-1 w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
                         task.completed
                           ? 'bg-green-500 border-green-500'
+                          : task.notCompleted
+                          ? 'bg-red-500 border-red-500'
                           : 'border-gray-300'
                       }`}
                     >
@@ -366,7 +413,13 @@ export default function AllTasks({ user }: AllTasksProps) {
                   )}
 
                   <div className="flex-1 min-w-0">
-                    <h4 className={`font-medium ${task.completed ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
+                    <h4 className={`font-medium ${
+                      task.completed
+                        ? 'text-gray-400 line-through'
+                        : task.notCompleted
+                        ? 'text-red-700'
+                        : 'text-gray-800'
+                    }`}>
                       {task.title}
                     </h4>
 
@@ -406,12 +459,26 @@ export default function AllTasks({ user }: AllTasksProps) {
                           ✓ Выполнено: {formatMSKDateTime(task.completedAt)}
                         </span>
                       )}
+
+                      {task.notCompleted && (
+                        <span className="text-red-600 font-medium">
+                          Не выполнена
+                        </span>
+                      )}
                     </div>
+
+                    <p className="text-xs text-indigo-500 mt-2">
+                      Нажмите, чтобы открыть карточку задачи
+                    </p>
                   </div>
 
                   {canDelete && (
                     <button
-                      onClick={() => handleDelete(task.id)}
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(task.id);
+                      }}
                       className="text-gray-400 hover:text-red-500 transition p-1"
                       title="Удалить"
                     >
@@ -426,6 +493,20 @@ export default function AllTasks({ user }: AllTasksProps) {
           })
         )}
       </div>
+
+      {selectedTask && (
+        <TaskDetailsModal
+          task={selectedTask}
+          user={user}
+          profiles={profiles}
+          assignees={Object.entries(profiles).map(([id, full_name]) => ({
+            id,
+            full_name,
+          }))}
+          onClose={() => setSelectedTask(null)}
+          onRefresh={loadTasks}
+        />
+      )}
     </div>
   );
 }

@@ -305,7 +305,9 @@ export default function Documents({ user }: DocumentsProps) {
 
 function CloudFileActions({ document: doc }: { document: Document }) {
   const [busy, setBusy] = useState(false);
-
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewType, setPreviewType] = useState('');
+  const [previewName, setPreviewName] = useState('');
   const getFileBlob = async (): Promise<Blob | null> => {
     const path = `${doc.uploadedBy}/${doc.id}-${doc.fileName}`;
 
@@ -322,7 +324,28 @@ function CloudFileActions({ document: doc }: { document: Document }) {
 
     return data;
   };
+  const handlePreview = async () => {
+    if (busy) return;
 
+    setBusy(true);
+
+    try {
+      const blob = await getFileBlob();
+      if (!blob) return;
+
+      const url = URL.createObjectURL(blob);
+
+      setPreviewUrl((oldUrl) => {
+        if (oldUrl) URL.revokeObjectURL(oldUrl);
+        return url;
+      });
+
+      setPreviewType(blob.type || doc.fileType || '');
+      setPreviewName(doc.fileName);
+    } finally {
+      setBusy(false);
+    }
+  };
   const handleDownload = async () => {
     if (busy) return;
     setBusy(true);
@@ -381,6 +404,27 @@ function CloudFileActions({ document: doc }: { document: Document }) {
 
   return (
     <div className="flex gap-1 flex-shrink-0">
+      <button
+        onClick={() => void handlePreview()}
+        disabled={busy}
+        className="text-gray-400 hover:text-indigo-600 transition p-1 disabled:opacity-40"
+        title="Открыть документ"
+      >
+        <svg
+          className="w-4 h-4"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"
+          />
+          <circle cx="12" cy="12" r="3" strokeWidth={2} />
+        </svg>
+      </button>
       <button
         onClick={() => void handleDownload()}
         disabled={busy}
